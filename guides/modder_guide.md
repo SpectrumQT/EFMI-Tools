@@ -28,7 +28,7 @@ For the very first mod try the basic re-import of original model without any edi
 4. (Optional) Lower game resolution to 1920x1080 to reduce Frame Dump folder size.
 5. Go to Character Menu of character you're going to dump (optionally, go to weapon tab if you also want to grab it).
 6. Press **[0]** button on your **NumPad** to enable **Shader Hunting Mod**.
-7. Press **[F11]** to create a Frame Dump.
+7. Press **[Shift]+[F11]** to create a Frame Dump.
 8. Dump folder **FrameAnalysis-DATETIME** will be located in the `EFMI` folder (same folder where `Mods` folder is located).
 9. Rename dump folder to something sensible (i.e. `Endmin Menu Dump` or `Endmin With Weapon Menu Dump`).
 
@@ -48,7 +48,7 @@ For the very first mod try the basic re-import of original model without any edi
 1. Add character to current team.
 2. Switch to another character (no the one you're dumping).
     * It will force the game to apply LoD model (currently directly controled character never getting replaced with LoD).
-3. Press **[F11]** to create a Frame Dump.
+3. Press **[Shift]+[F11]** to create a Frame Dump.
 4. New dump folder **FrameAnalysis-DATETIME** will be located in the `EFMI` folder (same folder where `Mods` folder is located).
 5. Rename dump folder to something sensible (i.e. `Endmin Open World Dump` or `Endmin With Weapon Menu Dump`)
 
