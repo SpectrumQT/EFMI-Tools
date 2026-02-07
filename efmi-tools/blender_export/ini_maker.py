@@ -35,6 +35,7 @@ chached_template_string: Optional[Template] = None
 class IniMaker:
     # Input
     cfg: EFMI_Settings
+    scene: bpy.types.Scene
     mod_info: ModInfo
     extracted_object: ExtractedObject
     merged_object: MergedObject

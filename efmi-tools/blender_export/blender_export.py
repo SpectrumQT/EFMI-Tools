@@ -255,6 +255,7 @@ class ModExporter:
 
         ini_maker = IniMaker(
             cfg=self.cfg,
+            scene=self.context.scene,
             mod_info=ModInfo(
                 efmi_tools_version=Version(self.cfg.efmi_tools_version),
                 required_efmi_version=Version(self.cfg.required_efmi_version),
