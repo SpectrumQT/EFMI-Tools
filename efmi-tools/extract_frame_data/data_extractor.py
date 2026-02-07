@@ -217,7 +217,17 @@ class DataExtractor:
                 }
                     
                 ib = buffers['IB']
-                ib_layout = ib.get_format(call_id).ib_layout
+                ib_format = ib.get_format(call_id)
+                if ib_format.ib_layout is None:
+                    for descriptor in ib.descriptors:
+                        if descriptor.call_id == call_id:
+                            if descriptor.slot_type == SlotType.IndexBuffer:
+                                path = Path(descriptor.data.path).with_suffix('.txt')
+                                with open(path, 'r') as f:
+                                    ib_format = MigotoFormat.from_txt_file(f)  
+                                break
+                            
+                ib_layout = ib_format.ib_layout
                 index_semantic_name = AbstractSemantic(Semantic.Index).get_name()
 
                 if is_static_object:
