@@ -452,6 +452,12 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=False,
     ) # type: ignore
 
+    import_tangent_data_to_attribute: BoolProperty(
+        name="Import Tangent Data",
+        description="Import encoded tangent data as vertex attribute for debug view.",
+        default=False,
+    ) # type: ignore
+
     # Service
 
     last_error_setting_name: StringProperty(

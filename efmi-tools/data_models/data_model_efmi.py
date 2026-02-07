@@ -64,7 +64,8 @@ class DataModelEFMI(DataModel):
                  vg_remap: Optional[numpy.ndarray],
                  mirror_mesh: bool = False,
                  mesh_scale: float = 1.0,
-                 mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0)):
+                 mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+                 import_tangent_data_to_attribute: bool = False):
 
         # Set import_format for NORMAL0 to prevent automatic addition of default format converter (one that would reshape array from 1 to 1,3)
         # buffer_semanic = vertex_buffer.layout.get_element(AbstractSemantic(Semantic.EncodedData))
@@ -83,14 +84,15 @@ class DataModelEFMI(DataModel):
         if encoded_data is not None:
             self.data_importer.import_normals(mesh, decoded_normals, vertex_ids)
 
-            # DEBUG: import encoded tangents as vertex attribute
-            normals, encoded_tangents, bitangent_signs = self.decode_tbn_data_10_10_10_2(encoded_data, debug=True)
+            if import_tangent_data_to_attribute:
+                # DEBUG: import encoded tangents as vertex attribute
+                normals, encoded_tangents, bitangent_signs = self.decode_tbn_data_10_10_10_2(encoded_data, debug=True)
 
-            negatives = numpy.where(encoded_tangents < 0, encoded_tangents, 0)
-            positives = numpy.where(encoded_tangents > 0, encoded_tangents, 0)
-            data = numpy.stack([negatives*-1, positives], axis=1)
+                negatives = numpy.where(encoded_tangents < 0, encoded_tangents, 0)
+                positives = numpy.where(encoded_tangents > 0, encoded_tangents, 0)
+                data = numpy.stack([negatives*-1, positives], axis=1)
 
-            self.data_importer.import_attribute(mesh, BufferSemantic(AbstractSemantic(Semantic.Attribute), DXGIFormat.R32_FLOAT).get_name(), data)
+                self.data_importer.import_attribute(mesh, BufferSemantic(AbstractSemantic(Semantic.Attribute), DXGIFormat.R32_FLOAT).get_name(), data)
 
     def get_data(self, 
                  context: bpy.types.Context, 

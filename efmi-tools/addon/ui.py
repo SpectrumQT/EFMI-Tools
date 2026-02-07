@@ -286,6 +286,7 @@ class EFMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
         if not cfg.partial_export:
             # layout.row().prop(cfg, 'skip_known_cubemap_textures')
             layout.row().prop(cfg, 'add_missing_vertex_groups')
+            layout.row().prop(cfg, 'allow_export_without_lods')
             # layout.row().prop(cfg, 'unrestricted_custom_shape_keys')
             if cfg.mod_skeleton_type == 'MERGED':
                 layout.row().prop(cfg, 'skeleton_scale')
@@ -709,3 +710,5 @@ class DebugPanel(bpy.types.Panel):
         layout.row().prop(cfg, 'allow_missing_shapekeys')
         layout.row().prop(cfg, 'remove_temp_object')
         layout.row().prop(cfg, 'export_on_reload')
+        layout.row().prop(cfg, 'import_tangent_data_to_attribute')
+        

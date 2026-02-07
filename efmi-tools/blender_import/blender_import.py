@@ -114,7 +114,7 @@ class ObjectImporter:
             model.unpack_normal = True
             model.legacy_vertex_colors = cfg.color_storage == 'LEGACY'
 
-            model.set_data(obj, mesh, index_buffer, vertex_buffer, vg_remap, mirror_mesh=cfg.mirror_mesh, mesh_scale=1.00, mesh_rotation=(0, 0, 0))
+            model.set_data(obj, mesh, index_buffer, vertex_buffer, vg_remap, mirror_mesh=cfg.mirror_mesh, mesh_scale=1.00, mesh_rotation=(0, 0, 0), import_tangent_data_to_attribute=cfg.import_tangent_data_to_attribute)
 
             num_shapekeys = 0 if obj.data.shape_keys is None else len(getattr(obj.data.shape_keys, 'key_blocks', []))
 
