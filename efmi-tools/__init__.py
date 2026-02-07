@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+import sys
+
+from . import auto_load
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / 'libs'))
+
+
+bl_info = {
+    "name": "EFMI Tools",
+    "version": (0, 1, 0),
+    "efmi_version": (1, 0, 0),
+    "blender": (3, 6, 0),
+    "author": "SpectrumQT, LeoTorreZ, SinsOfSeven, SilentNightSound, DarkStarSword",
+    "location": "View3D > Sidebar > Tool Tab",
+    "description": "Arknights: Endfield modding toolkit",
+    "category": "Object",
+    "tracker_url": "https://github.com/SpectrumQT/EFMI-Tools",
+}
+auto_load.init()
+
+import bpy
+from .addon import settings
+
+
+def trigger_mod_export():
+    if bpy.context.scene.efmi_tools_settings.export_on_reload:
+        print('Triggered export on addon reload...')
+        bpy.ops.efmi_tools.export_mod()
+    
+
+def register():
+    auto_load.register()
+
+    bpy.types.Scene.efmi_tools_settings = bpy.props.PointerProperty(type=settings.EFMI_Settings)
+    
+    # prefs = bpy.context.preferences.addons[__package__].preferences
+    bpy.app.timers.register(trigger_mod_export, first_interval=0.1)
+
+
+def unregister():
+    auto_load.unregister()
+
+    del bpy.types.Scene.efmi_tools_settings
+
+    if bpy.app.timers.is_registered(trigger_mod_export):
+        bpy.app.timers.unregister(trigger_mod_export)

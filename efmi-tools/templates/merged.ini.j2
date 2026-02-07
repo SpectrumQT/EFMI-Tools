@@ -1,0 +1,708 @@
+; EFMI BETA-4 INI
+
+{%- macro note(text) %}{% if comment_code %}; {{ text }}{% else %};DEL{% endif %}{% endmacro %}
+
+; Mod State -------------------------
+
+{%- if cfg.use_ini_toggles %}
+{{note("Hotkeys generated from Ini Toggles")}}
+{%- for var in cfg.ini_toggles.vars -%}
+{%- if var.hotkeys %}
+
+[KeySwap{{ formatter.format_name_camel_case(var.name) }}]
+condition = $object_detected == 1
+{%- for hotkeys in formatter.format_hotkeys(var.hotkeys) %}
+key = {{ hotkeys }}
+{%- endfor %}
+type = cycle
+{{ formatter.format_ini_swapvar(var.name) }} = {{ var.states | map(attribute='name') | join(', ') }}
+{%- endif -%}
+{%- endfor %}
+{%- endif %}
+
+{{note("Global variables used by entire mod")}}
+[Constants]
+{{note("Allows EFMI to safely disable incompatible mod and notify user about it")}}
+global $required_efmi_version = {{ '%0.2f'| format(mod_info.required_efmi_version.as_float()) }}
+{{note("Number of indices in original model")}}
+global $object_guid = {{ extracted_object.index_count }}
+{{note("Number of vertices in custom model")}}
+global $mesh_vertex_count = {{ merged_object.vertex_count }}
+{{note("Number of shapekeyed vertices in custom model")}}
+global $shapekey_vertex_count = {{ merged_object.shapekeys.vertex_count }}
+{{note("ID assigned to our mod by EFMI")}}
+global $mod_id = -1000
+{{note("Changes between 0 and 1 with every frame, used to run bone merging only once per frame for every component")}}
+global $state_id = 0
+{{note("Controls whether our mod is enabled, prevents any overrides from happening if $mod_enabled == 0")}}
+{{note("Prevents user from being crash-locked in case of incompatible EFMI version")}}
+global $mod_enabled = 0
+{{note("Indicates if our object was detected in previous frame")}}
+global $object_detected = 0
+{{note("Used to pass current merge status to CommandListMergeSkeleton and get resulting merge status")}}
+global $merge_status_id = 0
+{{note("Stores skeleton merging status of this component for current frame:")}}
+{{note("0 - neither regular nor special skeleton bones data was collected for this component")}}
+{{note("1 - only regular skeleton bones data was collected for this component")}}
+{{note("2 - both regular and special skeleton bones data was collected for this component")}}
+{%- for component in extracted_object.components %}
+global $merge_status_id_{{ loop.index0 }} = 0
+{%- endfor %}
+{%- if cfg.use_ini_toggles %}
+; Swap vars aka toggles defaults
+{%- for var in cfg.ini_toggles.vars %}
+global persist {{ formatter.format_ini_swapvar(var.name) }} = {{ var.default_state or 0 }}
+{%- endfor %}
+; Per-object state vars
+{%- for component in extracted_object.components %}
+{%- for obj in merged_object.components[loop.index0].objects %}
+global {{ formatter.format_ini_drawvar(obj.name) }} = 1
+{%- endfor %}
+{%- endfor %}
+{%- endif %}
+
+{{note("List of commands executed for every frame")}}
+[Present]
+if $object_detected
+    if $mod_enabled
+        post $object_detected = 0
+        {%- if merged_object.blend_remap_count > 0 %}
+        run = CommandListInitializeBlendRemaps
+        {%- endif %}
+        {%- if cfg.use_ini_toggles %}
+        run = CommandListProcessToggles
+        {%- endif %}
+        run = CommandListUpdateMergedSkeleton
+    else
+        {{note("Check if our mod is compatible with installed EFMI version (runs only once)")}}
+        if $mod_id == -1000
+            {{note("Pass required EFMI version along with mod metadata to EFMI")}}
+            run = CommandListRegisterMod
+        endif
+    endif
+endif
+
+{{note("Contacts EFMI to check whether installed version is compatible with our mod")}}
+[CommandListRegisterMod]
+{{note("Pass mod info variables to EFMI")}}
+$\EFMIv1\required_efmi_version = $required_efmi_version
+$\EFMIv1\object_guid = $object_guid
+{{note("Pass mod info resources to EFMI")}}
+Resource\EFMIv1\ModName = ref ResourceModName
+Resource\EFMIv1\ModAuthor = ref ResourceModAuthor
+Resource\EFMIv1\ModDesc = ref ResourceModDesc
+Resource\EFMIv1\ModLink = ref ResourceModLink
+Resource\EFMIv1\ModLogo = ref ResourceModLogo
+{{note("Register mod in EFMI")}}
+run = CommandList\EFMIv1\RegisterMod
+{{note("Read mod_id assigned to our mod by EFMI, incompatible mod will get `$mod_id == -1` assigned")}}
+$mod_id = $\EFMIv1\mod_id
+{{note("Enable our mod if EFMI assigned valid $mod_id to it")}}
+if $mod_id >= 0
+    $mod_enabled = 1
+endif
+
+{%- if cfg.use_ini_toggles %}
+
+{{note("Handles toggles logic")}}
+[CommandListProcessToggles]
+; Set display of each object according to toggles logic
+{%- for object_name, conditions in cfg.ini_toggles.compile_conditions().items() %}
+{{ formatter.format_ini_drawvar(object_name) }} = {{ conditions }}
+{%- endfor %}
+{{note("<< Here's a nice place to put your custom logic that controls objects visibility >>")}}
+{%- endif %}
+
+{{note("Copes hard to make merged skeleton work with WuWa 1.1+ pipeline")}}
+[CommandListUpdateMergedSkeleton]
+{{note("Reset skeleton merge status for all components")}}
+{%- for component in extracted_object.components %}
+$merge_status_id_{{ loop.index0 }} = 0
+{%- endfor %}
+{{note("Copy skeleton merged in previous frame to new buffer so we could force it to vs-cb4 slot")}}
+ResourceMergedSkeleton = copy ResourceMergedSkeletonRW
+{{note("Copy extra skeleton merged in previous frame to new buffer so we could force it to vs-cb3 slot")}}
+{{note("Yes, skeletons in vs-cb3 and vs-cb4 are slightly different, so we need to merge both for AA and outlines to work correctly")}}
+ResourceExtraMergedSkeleton = copy ResourceExtraMergedSkeletonRW
+{%- if merged_object.blend_remap_count > 0 %}
+run = CommandListRemapMergedSkeleton
+{%- endif %}
+
+{%- if merged_object.blend_remap_count > 0 %}
+
+[ResourceMergedSkeletonRemap]
+[ResourceExtraMergedSkeletonRemap]
+
+[ResourceBlendBufferOverride]
+[ResourceExtraMergedSkeletonOverride]
+[ResourceMergedSkeletonOverride]
+
+[ResourceRemappedBlendBufferRW]
+[ResourceRemappedSkeletonRW]
+[ResourceExtraRemappedSkeletonRW]
+
+{%- for component in merged_object.components %}
+{%- if component.blend_remap_vg_count > 0 %}
+
+[ResourceRemappedBlendBufferComponent{{ loop.index0 }}]
+[ResourceRemappedSkeletonComponent{{ loop.index0 }}]
+[ResourceExtraRemappedSkeletonComponent{{ loop.index0 }}]
+{%- endif %}
+{%- endfor %}
+
+{{note("Prepares copies of Blend.buf with remapped VG ids for each component with blend remap")}}
+[CommandListInitializeBlendRemaps]
+local $blend_remaps_initialized
+if !$blend_remaps_initialized
+    {{note("Initialize empty merged skeleton temp buffers to use in remapping")}}
+    ResourceRemappedSkeletonRW = copy ResourceMergedSkeletonRW
+    ResourceExtraRemappedSkeletonRW = copy ResourceExtraMergedSkeletonRW
+
+    {{note("Specify how many vertices to process, used to properly allocate CS dispatch size")}}
+    $\EFMIv1\custom_vertex_count = $mesh_vertex_count
+    {{note("Specify how many VGs are stored in Blend.buf for each vertex (usually it's 4, but i.e. Zani's ult torso uses 8)")}}
+    $\EFMIv1\weights_per_vertex_count = {{ buffers['BlendRemapVertexVG'].layout.semantics[0].get_num_values() }}
+    {{note("Pass resource with all VG maps used for all Blend.buf remapping calls")}}
+    cs-t34 = ref ResourceBlendRemapReverseBuffer
+    {{note("Pass 16-bit VG ids of each vertex (original Blend.buf is 8-bit and cannot store VG ids above 255)")}}
+    cs-t35 = ref ResourceBlendRemapVertexVGBuffer
+
+    {%- for component in merged_object.components %}
+    {%- if component.blend_remap_vg_count > 0 %}
+
+    {{note("Specify which remap data to use from ResourceBlendRemapReverseBuffer")}}
+    $\EFMIv1\blend_remap_id = {{ component.blend_remap_id }}
+    {{note("Copy original Blend.buf from resource without specified `stride` to temp resource")}}
+    {{note("We cannot use default ResourceBlendBuffer since CS cannot address it fully due to `stride`")}}
+    ResourceRemappedBlendBufferRW = copy ResourceBlendBufferNoStride
+    {{note("Pass temp resource to CS")}}
+    cs-u4 = ref ResourceRemappedBlendBufferRW
+    {{note("Run CS to remap VG ids in temp resource")}}
+    run = CustomShader\EFMIv1\BlendRemapper
+    {{note("Copy remapped temp resource to permanent storage")}}
+    ResourceRemappedBlendBufferComponent{{ loop.index0 }} = copy ResourceRemappedBlendBufferRW
+    {{note("Copy D3D11_BUFFER_DESC from original Blend.buf, since game expects buffer with correct `stride`")}}
+    ResourceRemappedBlendBufferComponent{{ loop.index0 }} = copy_desc ResourceBlendBuffer
+    {%- endif %}
+    {%- endfor %}
+
+    $blend_remaps_initialized = 1
+endif
+
+{{note("Remaps VG ids in merged skeleton buffers for each component with blend remap")}}
+[CommandListRemapMergedSkeleton]
+{{note("Copy merged skeleton buffers to use them as inputs for all SkeletonRemapper calls in current frame")}}
+{{note("FIXME: for some reason usage of ResourceMergedSkeleton and ResourceExtraMergedSkeleton crashes the modded pipeline, even though they're created just before this call via `copy` as well and only used to be passed to vs-cb4 and vs-cb3")}}
+ResourceMergedSkeletonRemap = copy ResourceMergedSkeletonRW
+ResourceExtraMergedSkeletonRemap = copy ResourceExtraMergedSkeletonRW
+
+{{note("Pass resource with all VG maps used for merged skeleton remapping calls")}}
+cs-t37 = ResourceBlendRemapForwardBuffer
+
+{%- for component in merged_object.components %}
+{%- if component.blend_remap_vg_count > 0 %}
+
+{{note("Remap Component%d Merged Skeleton" | format(loop.index0))}}
+{{note("Specify which remap data to use from ResourceBlendRemapForwardBuffer")}}
+$\EFMIv1\blend_remap_id = {{ component.blend_remap_id }}
+{{note("Specify how many VGs to process, used to properly allocate CS dispatch size")}}
+$\EFMIv1\vg_count = {{ component.blend_remap_vg_count }}
+{{note("Remap merged skeleton for Component%d to use in all draw calls of current frame" | format(loop.index0))}}
+cs-t38 = ResourceMergedSkeletonRemap
+cs-u5 = ResourceRemappedSkeletonRW
+run = CustomShader\EFMIv1\SkeletonRemapper
+ResourceRemappedSkeletonComponent{{ loop.index0 }} = copy ResourceRemappedSkeletonRW
+{{note("Remap second merged skeleton for Component%d to use in all draw calls of current frame" | format(loop.index0))}}
+cs-t38 = ResourceExtraMergedSkeletonRemap
+cs-u5 = ResourceExtraRemappedSkeletonRW
+run = CustomShader\EFMIv1\SkeletonRemapper
+ResourceExtraRemappedSkeletonComponent{{ loop.index0 }} = copy ResourceExtraRemappedSkeletonRW
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
+; Resources: Mod Info -------------------------
+
+{{note("Name of mod")}}
+[ResourceModName]
+
+{%- if mod_info.mod_name.strip() != '' %}
+type = Buffer
+data = "{{ mod_info.mod_name }}"
+{%- else %}
+; type = Buffer
+; data = "Unknown Mod Name"
+{%- endif %}
+
+{{note("Name of mod author")}}
+[ResourceModAuthor]
+{%- if mod_info.mod_author.strip() != '' %}
+type = Buffer
+data = "{{ mod_info.mod_author }}"
+{%- else %}
+; type = Buffer
+; data = "Unknown Mod Author"
+{%- endif %}
+
+{{note("Mod description")}}
+[ResourceModDesc]
+{%- if mod_info.mod_desc.strip() != '' %}
+type = Buffer
+data = "{{ mod_info.mod_desc }}"
+{%- else %}
+; type = Buffer
+; data = "Empty Mod Description"
+{%- endif %}
+
+{{note("Link to mod repository")}}
+[ResourceModLink]
+{%- if mod_info.mod_link.strip() != '' %}
+type = Buffer
+data = "{{ mod_info.mod_link }}"
+{%- else %}
+; type = Buffer
+; data = "Empty Mod Link"
+{%- endif %}
+
+{{note("Texture file with 512x512 .dds (BC7 SRGB) mod logo")}}
+[ResourceModLogo]
+{%- if mod_info.mod_logo.is_file() %}
+filename = Textures/Logo.dds
+{%- else %}
+; filename = Textures/Logo.dds
+{%- endif %}
+
+; Shading: Draw Call Stacks Processing -------------------------
+
+{{note("Marks Bones Data CB resource with arbitrary value 3381.7777")}}
+[TextureOverrideMarkBoneDataCB]
+hash = {{ extracted_object.cb4_hash }}
+match_priority = 0
+filter_index = 3381.7777
+
+{{note("Updates merged skeleton buffers with skeleton data of calling component")}}
+{{note("The main problem is we can't reliably identify type of skeleton just from the buffer alone since both have the same hash")}}
+{{note("Luckily, any relevant shader call within the stack has one of the following slot usage patterns:")}}
+{{note("1. Only regular skeleton in vs-cb3")}}
+{{note("2. Only regular skeleton in vs-cb4")}}
+{{note("3. Special skeleton in vs-cb3 and regular skeleton in vs-cb4")}}
+{{note("So by the time we've finished processing the stack we can reliably grab:")}}
+{{note("* Regular skeleton from vs-cb4 (pattern 2 or 3), since special skeleton never goes there")}}
+{{note("* Special skeleton from vs-cb3 (pattern 3), since we know for sure that regular currently is in vs-cb4")}}
+[CommandListMergeSkeleton]
+{{note("Here we're using $merge_status_id as both 'function' input aka argument and return result")}}
+{{note("We're doing so to prevent wasting compute resources on job that's already done for current frame")}}
+{{note("* $merge_status_id being 0 indicates we haven't merged any skeleton data for calling component in current frame yet")}}
+if $merge_status_id == 0
+    {{note("Try to get regular skeleton data from current shader call")}}
+    {{note("Make sure vs-cb4 contain skeleton data")}}
+	if vs-cb4 == 3381.7777
+        {{note("Pass constant buffer with regular skeleton data to copy bones from")}}
+		cs-cb8 = ref vs-cb4
+        {{note("Pass buffer that gonna store regular skeleton data of all components")}}
+		cs-u6 = ResourceMergedSkeletonRW
+        {{note("Set custom scale for skeleton, changing size of the entire model")}}
+		$\EFMIv1\custom_mesh_scale = {{ '%0.2f'| format(skeleton_scale) }}
+        {{note("Run Skeleton Merger CS to merge regular skeleton data of current component into ResourceMergedSkeletonRW")}}
+		run = CustomShader\EFMIv1\SkeletonMerger
+        {{note("Memorize that we've merged regular skeleton data of current frame")}}
+		$merge_status_id = 1
+	endif
+endif
+{{note("* $merge_status_id being 1 indicates we've already merged regular skeleton data for calling component in current frame")}}
+if $merge_status_id == 1
+    {{note("Try to get special skeleton data from current shader call")}}
+    {{note("Make sure both vs-cb4 and vs-cb3 contain skeleton data")}}
+    {{note("That's the only place where we can reliably get data for extra skeleton")}}
+	if vs-cb4 == 3381.7777 && vs-cb3 == 3381.7777
+        {{note("Pass constant buffer with special skeleton data to copy bones from")}}
+		cs-cb8 = ref vs-cb3
+        {{note("Pass buffer that gonna store special skeleton data of all components")}}
+		cs-u6 = ResourceExtraMergedSkeletonRW
+        {{note("Set custom scale for skeleton, changing size of the entire model")}}
+		$\EFMIv1\custom_mesh_scale = {{ '%0.2f'| format(skeleton_scale) }}
+        {{note("Run Skeleton Merger CS to merge special skeleton data of current component into ResourceExtraMergedSkeletonRW")}}
+		run = CustomShader\EFMIv1\SkeletonMerger
+        {{note("Memorize that we've merged both regular and special skeleton data of current frame")}}
+		$merge_status_id = 2
+	endif
+endif
+
+{{note("Overrides textures via triggering [ResourceTextureX] sections by calling chechtextureoverride on ps-t slots")}}
+[CommandListTriggerResourceOverrides]
+{{note("Trigger texture sections to replace texture with matching hash")}}
+CheckTextureOverride = ps-t0
+CheckTextureOverride = ps-t1
+CheckTextureOverride = ps-t2
+CheckTextureOverride = ps-t3
+CheckTextureOverride = ps-t4
+CheckTextureOverride = ps-t5
+CheckTextureOverride = ps-t6
+CheckTextureOverride = ps-t7
+{{note("Trigger callbacks on bone data CBs to assign them filter_index")}}
+{{note("These buffers cannot be replaced directly via `this` as their hash is widely used by many objects")}}
+CheckTextureOverride = vs-cb3
+CheckTextureOverride = vs-cb4
+
+{{note("Overrides resources that are shared between VS calls")}}
+[CommandListOverrideSharedResources]
+{{note("Store pointer to original buffer to restore original context on cleanup")}}
+ResourceBypassVB0 = ref vb0
+{{note("Override resources to make draw calls use custom meshes")}}
+ib = ResourceIndexBuffer
+{% if unrestricted_custom_shape_keys and merged_object.shapekeys.vertex_count > 0 -%}
+vb0 = ResourceShapeKeyedPosition
+{%- else -%}
+vb0 = ResourcePositionBuffer
+{%- endif %}
+vb1 = ResourceVectorBuffer
+vb2 = ResourceTexcoordBuffer
+{%- if "Color" in buffers.keys() %}
+vb3 = ResourceColorBuffer
+{%- endif %}
+{% if merged_object.blend_remap_count == 0 -%}
+vb4 = ResourceBlendBuffer
+{{note("Pass merged skeleton is resource matches marked Bones Data CB")}}
+if vs-cb4 == 3381.7777
+    vs-cb4 = ref ResourceMergedSkeleton
+    if vs-cb3 == 3381.7777
+        vs-cb3 = ref ResourceExtraMergedSkeleton
+    endif
+elif vs-cb3 == 3381.7777
+    vs-cb3 = ref ResourceMergedSkeleton
+endif
+{%- else -%}
+if ResourceBlendBufferOverride === null
+    {{note("Use non-remapped Blend.buf and merged skeleton")}}
+    vb4 = ResourceBlendBuffer
+    if vs-cb4 == 3381.7777
+        vs-cb4 = ref ResourceMergedSkeleton
+		if vs-cb3 == 3381.7777
+			vs-cb3 = ref ResourceExtraMergedSkeleton
+		endif
+	elif vs-cb3 == 3381.7777
+		vs-cb3 = ref ResourceMergedSkeleton
+    endif
+else
+    {{note("Use blend remap proxy buffers")}}
+    vb4 = ref ResourceBlendBufferOverride
+    if vs-cb4 == 3381.7777
+        vs-cb4 = ref ResourceMergedSkeletonOverride
+		if vs-cb3 == 3381.7777
+			vs-cb3 = ref ResourceExtraMergedSkeletonOverride
+		endif
+	elif vs-cb3 == 3381.7777
+		vs-cb3 = ref ResourceMergedSkeletonOverride
+    endif
+endif
+{%- endif %}
+{%- if unrestricted_custom_shape_keys and merged_object.shapekeys.vertex_count > 0 %}
+vb6 = null
+{%- endif %}
+
+{{note("Overrides resources that are shared between VS calls")}}
+[CommandListCleanupSharedResources]
+{{note("Restore original vb0 so we can use its hash to match next call")}}
+vb0 = ref ResourceBypassVB0
+{%- if merged_object.blend_remap_count > 0 %}
+{{note("Reset blend remap proxy buffers")}}
+{{note("(makes next CommandListOverrideSharedResources call to use non-remapped Blend.buf and merged skeleton by default)")}}
+if ResourceBlendBufferOverride !== null
+    ResourceBlendBufferOverride = null
+    ResourceMergedSkeletonOverride = null
+    ResourceExtraMergedSkeletonOverride = null
+endif
+{%- endif %}
+
+{%- for component in extracted_object.components %}
+
+{{note("Override draw calls for Component %d" | format(loop.index0))}}
+[TextureOverrideComponent{{ loop.index0 }}]
+hash = {{ extracted_object.vb0_hash }}
+match_first_index = {{ component.index_offset }}
+match_index_count = {{ component.index_count }}
+{{note("Signal our mod that object is found on screen and we can start overriding it")}}
+$object_detected = 1
+if $mod_enabled
+    {{note("Try to get skeleton data from each call of the stack until merge status is 2 (see Constants for details)")}}
+    if $merge_status_id_{{ loop.index0 }} != 2
+        {{note("Configure SkeletonMerger shader based on VG layout of current component")}}
+        $\EFMIv1\vg_offset = {{ extracted_object.components[loop.index0].vg_offset }}
+        $\EFMIv1\vg_count = {{ extracted_object.components[loop.index0].vg_count }}
+        {{note("Pass current merge status to MergeSkeleton command list")}}
+		$merge_status_id = $merge_status_id_{{ loop.index0 }}
+        {{note("Execute MergeSkeleton command list, updated merge status will be written to $merge_status_id")}}
+		run = CommandListMergeSkeleton
+        {{note("Remember merge status locally")}}
+		$merge_status_id_{{ loop.index0 }} = $merge_status_id
+	endif
+    {{note("Override draw call if we have merged skeleton ready")}}
+    if ResourceMergedSkeleton !== null
+    {%- if merged_object.components[loop.index0].objects | length > 0 %}
+        {{note("Skip original draw call")}}
+        handling = skip
+        {%- if merged_object.components[loop.index0].blend_remap_vg_count > 0 %}
+        {{note("Plug-in active blend remap data for this component")}}
+        ResourceBlendBufferOverride = ref ResourceRemappedBlendBufferComponent{{ loop.index0 }}
+        ResourceMergedSkeletonOverride = ref ResourceRemappedSkeletonComponent{{ loop.index0 }}
+        ResourceExtraMergedSkeletonOverride = ref ResourceExtraRemappedSkeletonComponent{{ loop.index0 }}
+        {%- endif %}
+        {{note("Trigger by-hash resource overrides")}}
+        run = CommandListTriggerResourceOverrides
+        {{note("Do by-slot resource overrides")}}
+        run = CommandListOverrideSharedResources
+    {%- for obj in merged_object.components[loop.index0].objects %}
+        ; Draw {{ obj.name }}
+		{%- if cfg.use_ini_toggles %}
+        if {{ formatter.format_ini_drawvar(obj.name) }}
+			drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
+        endif
+		{%- else %}
+        drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
+		{%- endif %}
+    {%- endfor %}
+        {{note("Restore required parts of original context")}}
+        run = CommandListCleanupSharedResources
+    {%- else %}
+        {{note("Skip original draw call")}}
+        handling = skip
+        {{note("Trigger by-hash resource overrides")}}
+        ; run = CommandListTriggerResourceOverrides
+        {{note("Do by-slot resource overrides")}}
+        ; run = CommandListOverrideSharedResources
+        ; Draw skipped: No matching custom components found
+        {{note("Restore required parts of original context")}}
+        ; run = CommandListCleanupSharedResources
+    {%- endif %}
+    endif
+endif
+
+{%- endfor %}
+
+; Shading: Textures -------------------------
+
+{%- for texture in textures %}
+
+[ResourceTexture{{ loop.index0 }}]
+filename = Textures/{{ texture.filename }}
+
+[TextureOverrideTexture{{ loop.index0 }}]
+hash = {{ texture.hash }}
+match_priority = 0
+if $object_detected
+    this = ResourceTexture{{ loop.index0 }}
+endif
+{%- endfor %}
+
+{% if merged_object.shapekeys.vertex_count > 0 -%}
+; Skinning: Shape Keys Override -------------------------
+
+{{note("Increases size of UAV that stores shapekeyed vertices xyz offsets to support more vertices than original")}}
+[TextureOverrideShapeKeyOffsets]
+hash = {{ extracted_object.shapekeys.offsets_hash }}
+match_priority = 0
+override_byte_stride = 24
+override_vertex_count = $mesh_vertex_count
+
+{{note("Increases size of UAV that stores shapekeyed vertices multipliers to support more vertices than original")}}
+[TextureOverrideShapeKeyScale]
+hash = {{ extracted_object.shapekeys.scale_hash }}
+match_priority = 0
+override_byte_stride = 4
+override_vertex_count = $mesh_vertex_count
+
+{{note("Updates ResourceShapeKeyCBRW that stores offsets of shapekeyed vertex lists, shape key values and multipliers")}}
+[CommandListSetupShapeKeys]
+{{note("Pass 4 byte checksum of shapekey offsets to ensure that we only modify expected values")}}
+$\EFMIv1\shapekey_checksum = {{ extracted_object.shapekeys.checksum }}
+{{note("Pass buffer with offsets for vertex lists of every shape key of custom model")}}
+cs-t33 = ResourceShapeKeyOffsetBuffer
+{{note("Pass buffer with custom values for every shape key, allows to control both custom and stock")}}
+cs-u5 = ResourceCustomShapeKeyValuesRW
+{{note("Pass buffer that gonna store result of calculations, required for Shape Key Loader CS to run")}}
+cs-u6 = ResourceShapeKeyCBRW
+{{note("Run ShapeKeyOverrider CS")}}
+run = CustomShader\EFMIv1\ShapeKeyOverrider
+
+{{note("Runs custom Shape Key Loader CS to, well, load shapekeys data from buffers")}}
+[CommandListLoadShapeKeys]
+{{note("Pass number of shapekeyed vertices to adjust required threads count via dipatch_y")}}
+$\EFMIv1\shapekey_vertex_count = $shapekey_vertex_count
+{{note("Pass buffer with lists of per-vertex ids for every shape key")}}
+cs-t0 = ResourceShapeKeyVertexIdBuffer
+{{note("Pass buffer with lists of xyz per-vertex offsets for every shape key")}}
+cs-t1 = ResourceShapeKeyVertexOffsetBuffer
+{{note("Pass buffer with shape key vertex lists offsets, and shape key values & multipliers")}}
+cs-u6 = ResourceShapeKeyCBRW
+{{note("Run ShapeKeyLoader CS")}}
+run = CustomShader\EFMIv1\ShapeKeyLoader
+
+{{note("Handles EFMI callback fired on original Shape Key Loader CS call")}}
+[TextureOverrideShapeKeyLoaderCallback]
+hash = {{ extracted_object.shapekeys.offsets_hash }}
+match_priority = 0
+if $mod_enabled
+    {{note("Ensure that callback has EFMI filter_index of Shape Key Loader CS assigned")}}
+    if cs == 3381.3333 && ResourceMergedSkeleton !== null
+        {{note("It looks like we can skip checking for THREAD_GROUP_COUNT_Y as UAV hashes are unique for each object")}}
+        {{note("Ensures that dispatch_y of Shape Key Loader CS call matches one from dump")}}
+        {{note("if THREAD_GROUP_COUNT_Y == %d" | format(extracted_object.shapekeys.dispatch_y))}}
+        {{note("Skip handling of original Shape Key Loader CS call to modify dispatch_y value")}}
+        handling = skip
+        {{note("Run custom Shape Key Overrider CS to prepare shape key resources for loading")}}
+        run = CommandListSetupShapeKeys
+        {{note("Run custom Shape Key Loader CS to load shape key resources")}}
+        run = CommandListLoadShapeKeys
+        {{note("endif")}}
+    endif
+endif
+
+{{note("Runs custom Shape Key Loader CS to, well, load shapekeys data from buffers")}}
+[CommandListMultiplyShapeKeys]
+{{note("Pass number of shapekeyed vertices to adjust required threads count via dipatch_y")}}
+$\EFMIv1\custom_vertex_count = $mesh_vertex_count
+{{note("Run custom Shape Key Multiplier CS to set deformation intensity")}}
+run = CustomShader\EFMIv1\ShapeKeyMultiplier
+{% if unrestricted_custom_shape_keys %}
+{{note("Runs custom Shape Key Applier CS to apply calculated offsets to xyz position data, allowing to shapekey all components")}}
+[CommandListApplyShapeKeys]
+{{note("Pass buffer with per-vertex position data")}}
+cs-t6 = ResourcePositionBuffer
+{{note("Pass buffer to store calculation results")}}
+cs-u6 = ResourcePositionRW
+{{note("Run custom Shape Key Applier CS to add xyz offsets to position data")}}
+run = CustomShader\EFMIv1\ShapeKeyApplier
+{{note("Copy result to new buffer so we can force it to vb0 slot")}}
+ResourceShapeKeyedPosition = copy ResourcePositionRW
+{% endif %}
+{{note("Handles EFMI callback fired on original Shape Key Multiplier CS call")}}
+[TextureOverrideShapeKeyMultiplierCallback]
+hash = {{ extracted_object.shapekeys.offsets_hash }}
+match_priority = 0
+if $mod_enabled
+    {{note("Ensure that callback has EFMI filter_index of Shape Key Multiplier CS assigned")}}
+    if cs == 3381.4444 && ResourceMergedSkeleton !== null
+        {{note("It looks like we can skip checking for THREAD_GROUP_COUNT_Y as UAV hashes are unique for each object")}}
+        {{note("Ensures that dispatch_y of Shape Key Multiplier CS call matches one from dump")}}
+        {{note("if THREAD_GROUP_COUNT_Y == shapekeys.multiplier_dispatch_y")}}
+        {{note("Skip handling of original Shape Key Multiplier CS call to modify dispatch_y value")}}
+        handling = skip
+        {{note("Run custom Shape Key Multiplier CS to apply dynamic per-character multipliers")}}
+        run = CommandListMultiplyShapeKeys
+        {%- if unrestricted_custom_shape_keys and merged_object.shapekeys.vertex_count > 0 %}
+        {{note("Runs custom Shape Key Applier CS to apply calculated offsets to xyz position data")}}
+        run = CommandListApplyShapeKeys
+        {%- endif %}
+        {{note("endif")}}
+    endif
+endif
+
+; Resources: Shape Keys Override -------------------------
+{% if unrestricted_custom_shape_keys %}
+{{note("Stores copy of ResourcePositionRW to force it into VB0")}}
+[ResourceShapeKeyedPosition]
+
+{{note("Stores position data with applied per-vertex xyz offsets resulted from shape keys calculations")}}
+[ResourcePositionRW]
+type = RWBuffer
+format = R32_FLOAT
+stride = 12
+array = {{12 * merged_object.shapekeys.vertex_count}}
+{% endif %}
+{{note("Stores dynamically calculated CB required to override original Shape Keys CS call")}}
+[ResourceShapeKeyCBRW]
+{{note("Contains 128+128+8 values:")}}
+{{note("* 128 uint: Shape Key offsets (continuous lists of vertex offsets)")}}
+{{note("* 128 unorm: Shape Key values (range [0.0, 1.0])")}}
+{{note("* 8 uint: Shape Key CS settings")}}
+type = RWBuffer
+format = R32G32B32A32_UINT
+{{note("32 shapekey offsets, 32 shapekey values, 2 control flags")}}
+array = 66
+
+{{note("Stores values of custom Shape Keys and overrides for original ones")}}
+[ResourceCustomShapeKeyValuesRW]
+{{note("Contains 128 values, zero is shifted by 1.0 to the right")}}
+{{note("Expected value range is [1.0, 2.0]")}}
+{{note("* `0.0` means `no override`")}}
+{{note("* `1.0` means `override with zero`")}}
+{{note("* `2.0` means `override with one`")}}
+type = RWBuffer
+format = R32G32B32A32_FLOAT
+{{note("32 elements, 4 floats per element")}}
+array = 32
+{%- endif %}
+
+; Resources: Skeleton Override -------------------------
+
+{{note("Stores a copy of full skeleton merged in previous frame")}}
+[ResourceMergedSkeleton]
+
+{{note("Stores merged skeleton consisting of bones from all components, allows to make VG weights global")}}
+[ResourceMergedSkeletonRW]
+{{note("Contains up to 256 bones (or up to 512 with blend remaps)")}}
+type = RWBuffer
+format = R32G32B32A32_FLOAT
+{%- if merged_object.blend_remap_count == 0 %}
+{{note("256 bones, 3 elements per bone, 4 floats per element")}}
+array = 768
+{%- else %}
+{{note("512 bones, 3 elements per bone, 4 floats per element")}}
+array = 1536
+{%- endif %}
+
+{{note("Stores a copy of full extra skeleton merged in previous frame")}}
+[ResourceExtraMergedSkeleton]
+
+{{note("Stores additional merged skeleton used by some shaders like Anti Aliasing")}}
+[ResourceExtraMergedSkeletonRW]
+{{note("Contains up to 256 bones (or up to 512 with blend remaps)")}}
+type = RWBuffer
+format = R32G32B32A32_FLOAT
+{%- if merged_object.blend_remap_count == 0 %}
+{{note("256 bones, 3 elements per bone, 4 floats per element")}}
+array = 768
+{%- else %}
+{{note("512 bones, 3 elements per bone, 4 floats per element")}}
+array = 1536
+{%- endif %}
+
+; Resources: Buffers -------------------------
+
+{{note("Stores pointer to original vb0")}}
+[ResourceBypassVB0]
+
+{%- for buffer_name, buffer in buffers.items() %}
+
+[Resource{{ buffer_name }}Buffer]
+type = Buffer
+format = {{ buffer.layout.semantics[0].get_format() }}
+{{note("Skip `stride` for blend remap buffers (since CS cannot fully address Buffer's with stride)")}}
+{%- if "BlendRemap" not in buffer_name %}
+stride = {{ buffer.layout.stride }}
+{%- endif %}
+filename = Meshes/{{ buffer_name }}.buf
+
+{%- if buffer_name == "Blend" %}
+{%- if merged_object.blend_remap_count > 0 %}
+
+{{note("Additional 'view' for Blend.buf but without `stride` specified (since CS cannot fully address Buffer's with stride)")}}
+[ResourceBlendBufferNoStride]
+type = Buffer
+format = {{ buffer.layout.semantics[0].get_format() }}
+filename = Meshes/{{ buffer_name }}.buf
+{%- endif %}
+{%- endif %}
+
+{%- endfor %}
+
+; Autogenerated -------------------------
+
+; This mod.ini was automatically generated by EFMI Tools Blender addon v{{mod_info.efmi_tools_version}} and requires EFMI v{{mod_info.required_efmi_version}}+ to function
+
+; XXMI Launcher GameBanana: https://gamebanana.com/tools/17252
+; XXMI Launcher GitHub: https://github.com/SpectrumQT/XXMI-Launcher
+; EFMI Package GitHub: https://github.com/SpectrumQT/EFMI-Package
+; EFMI Tools GameBanana: https://gamebanana.com/tools/17289
+; EFMI Tools GitHub: https://github.com/SpectrumQT/EFMI_Tools
+; AGMG Modding Community Discord: https://discord.com/invite/agmg
