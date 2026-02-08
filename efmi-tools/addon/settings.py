@@ -153,6 +153,12 @@ class EFMI_Settings(bpy.types.PropertyGroup):
     ########################################
     # LOD Import
     ########################################
+
+    import_matched_lod_objects: BoolProperty(
+        name="Import LoDs In Blender (just to see what was picked)",
+        description="Import matched LoDs in Blender to manually check what automated system selected",
+        default=False,
+    ) # type: ignore
     
     lod_frame_dump_folder: StringProperty(
         name="LOD Frame Dump",

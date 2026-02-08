@@ -13,6 +13,8 @@ from textwrap import dedent
 from ..addon.exceptions import ConfigError
 
 from ..migoto_io.blender_interface.utility import *
+from ..migoto_io.blender_interface.collections import *
+from ..migoto_io.blender_interface.objects import *
 
 from ..migoto_io.data_model.dxgi_format import DXGIFormat
 from ..migoto_io.data_model.byte_buffer import ByteBuffer, IndexBuffer, MigotoFmt, BufferLayout, BufferSemantic, AbstractSemantic, Semantic, NumpyBuffer
@@ -23,6 +25,8 @@ from ..migoto_io.dump_parser.dump_parser import Dump
 from ..migoto_io.dump_parser.resource_collector import Source, WrappedResource
 from ..migoto_io.dump_parser.calls_collector import ShaderMap, Slot
 from ..migoto_io.dump_parser.data_collector import DataMap, DataCollector
+
+from ..data_models.data_model_efmi import DataModelEFMI
 
 
 from .data_extractor import DataExtractor
@@ -337,6 +341,12 @@ def extract_frame_data(cfg, extract_lods=False):
         extracted_object = read_metadata(object_source_folder / 'Metadata.json')
         imported_lods_count = 0
 
+        imported_objects = []
+
+        if cfg.import_matched_lod_objects:
+            model = DataModelEFMI()
+            model.unpack_normal = True
+    
         for component_id, component in enumerate(extracted_object.components):
             (lod_vb0_hash, vg_map, best_similarity) = lod_matcher.vg_maps.get(component.vb0_hash, (None, None, None))
             if lod_vb0_hash is None:
@@ -346,9 +356,18 @@ def extract_frame_data(cfg, extract_lods=False):
             if component.vb0_hash != lod_vb0_hash:
                 imported_lods_count += 1
 
-            # Check if same lod
-            if any(obj.vb0_hash == lod_vb0_hash for obj in component.lods):
-                continue
+            if cfg.import_matched_lod_objects:
+                # Import lod mesh for debug
+                lod_name = f'LOD mesh {lod_vb0_hash}' if lod_vb0_hash != component.vb0_hash else '(full mesh used as LOD)'
+                mesh = bpy.data.meshes.new(f'Component {component_id} {component.vb0_hash} {lod_name}')
+                obj = bpy.data.objects.new(mesh.name, mesh)
+                # global_matrix = axis_conversion(from_forward=axis_forward, from_up=axis_up).to_4x4()
+                # obj.matrix_world = global_matrix
+                mesh_name = lod_matcher.matched[component.vb0_hash]
+                matched_mesh: NumpyMesh = lod_matcher.lod_meshes.get(mesh_name, None) or lod_matcher.full_meshes.get(mesh_name, None)
+                model.set_data(obj, mesh, matched_mesh.index_buffer, matched_mesh.vertex_buffer, None, mirror_mesh=cfg.mirror_mesh, mesh_scale=1.00, mesh_rotation=(0, 0, 0), import_tangent_data_to_attribute=False)
+                imported_objects.append(obj)
+
             if best_similarity < cfg.geo_matcher_error_threshold:
                 raise ConfigError('lod_frame_dump_folder', dedent(f"""
                     Best matching LoD for Component {component_id} has {best_similarity:.2f}% similarity!
@@ -356,15 +375,33 @@ def extract_frame_data(cfg, extract_lods=False):
                     If it's not too far off, try to lower threshold. Otherwise either dump is missing some data or search engine fails to handle it.
                 """))
             print(f'LOD Found: Component {component_id} {component.vb0_hash} matches LOD {lod_vb0_hash} ({best_similarity:.2f}% similarity)')
+
+            # Skip LoD import if it already exists in Metadata.json
+            if any(obj.vb0_hash == lod_vb0_hash for obj in component.lods):
+                print(f'LOD {lod_vb0_hash} import skipped (already in Metdata.json)')
+                continue
+
             component.lods.append(ExtractedObjectComponentLOD(vb0_hash=lod_vb0_hash, vg_map=vg_map))
+
+        col = new_collection(f'{object_source_folder.stem} LoDs (for view only)')
+        for obj in imported_objects:
+            link_object_to_collection(obj, col)
+            
         with open(object_source_folder / f'Metadata.json', 'w') as f:
             f.write(extracted_object.as_json())
 
-        bpy.context.window_manager.popup_menu(
-            lambda self, context: self.layout.label(text=f'Successfully imported {imported_lods_count} LODs for {len(extracted_object.components)} components to Metadata.json ({len(extracted_object.components)-imported_lods_count} components seem to use full mesh as LOD).'),
-            title="LOD Import Complete",
-            icon='INFO'
-        )
+        if imported_lods_count < len(extracted_object.components) / 2:
+            bpy.context.window_manager.popup_menu(
+                lambda self, context: self.layout.label(text=f'Imported LoDs count {imported_lods_count} is suspiciously low for {len(extracted_object.components)} components total. Please try to create another Open World dump with being further away from the character in case you get LoD issues with exported mod.'),
+                title="LOD Import Complete",
+                icon='WARNING'
+            )
+        else:
+            bpy.context.window_manager.popup_menu(
+                lambda self, context: self.layout.label(text=f'Successfully imported {imported_lods_count} LODs for {len(extracted_object.components)} components to Metadata.json ({len(extracted_object.components)-imported_lods_count} components seem to use full mesh as LOD).'),
+                title="LOD Import Complete",
+                icon='INFO'
+            )
 
     if not extract_lods:
         write_objects(resolve_path(cfg.extract_output_folder), output_builder.objects, cfg.allow_missing_shapekeys)

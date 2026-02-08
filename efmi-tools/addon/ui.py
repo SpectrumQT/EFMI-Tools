@@ -232,6 +232,8 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         layout.row()
 
+        layout.row().prop(cfg, 'import_matched_lod_objects')
+
         layout.row().operator(EFMI_ImportLODData.bl_idname)
 
 
