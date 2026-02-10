@@ -36,8 +36,8 @@ class ModExporter:
     extracted_object: ExtractedObject
     skeleton_type: SkeletonType
     merged_object: MergedObject
-    buffers: Dict[str, NumpyBuffer] = {}
-    textures: List[Texture] = []
+    buffers: Dict[str, NumpyBuffer]
+    textures: List[Texture]
     ini: IniMaker
 
     def __init__(self, context, cfg, excluded_buffers: List[str]):
@@ -52,6 +52,9 @@ class ModExporter:
         self.textures_path = self.mod_output_folder / 'Textures'
         self.textures_path.mkdir(parents=True, exist_ok=True)
         self.local_mod_logo_path = self.textures_path / 'Logo.dds'
+
+        self.buffers = {}
+        self.textures =  []
 
     def export_mod(self):
     
@@ -372,6 +375,7 @@ class ModExporter:
                                     print(f'Element {i} diff: {old_data} != {new_data}')
 
                         print(f'Found {num_diffs} diffs (out of {len(old_semantic_data)} entries)')
+
 
 def blender_export(operator, context, cfg, excluded_buffers):
     mod_exporter = ModExporter(context, cfg, excluded_buffers)
