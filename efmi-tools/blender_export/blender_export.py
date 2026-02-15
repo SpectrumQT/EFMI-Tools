@@ -1,8 +1,12 @@
 import time
 import shutil
+import pathlib
+import os
 
 from typing import List, Dict, Union
 from dataclasses import dataclass, field
+
+from bpy.types import Operator
 
 from ..addon.exceptions import ConfigError
 
@@ -39,14 +43,24 @@ class ModExporter:
     buffers: Dict[str, NumpyBuffer]
     textures: List[Texture]
     ini: IniMaker
+    operator: Operator
 
-    def __init__(self, context, cfg, excluded_buffers: List[str]):
+    def __init__(self, operator, context, cfg, excluded_buffers: List[str]):
+        self.operator = operator
         self.context = context
         self.cfg = cfg
         self.excluded_buffers = excluded_buffers
 
         self.object_source_folder = resolve_path(cfg.object_source_folder)
         self.mod_output_folder = resolve_path(cfg.mod_output_folder)
+        
+        if cfg.mod_output_folder == "":
+            mod_name = str(pathlib.PurePath(cfg.object_source_folder).name)
+            default_path = os.path.join(cfg.object_source_folder, "..", mod_name + "Mod")
+            self.mod_output_folder = resolve_path(default_path)
+            self.operator.report(set(["WARNING"]), f"No output path selected, defaulting to {self.mod_output_folder}")
+            print(f"No output path selected, defaulting to {self.mod_output_folder}")
+        
         self.meshes_path = self.mod_output_folder / 'Meshes'
         self.meshes_path.mkdir(parents=True, exist_ok=True)
         self.textures_path = self.mod_output_folder / 'Textures'
@@ -378,5 +392,5 @@ class ModExporter:
 
 
 def blender_export(operator, context, cfg, excluded_buffers):
-    mod_exporter = ModExporter(context, cfg, excluded_buffers)
+    mod_exporter = ModExporter(operator, context, cfg, excluded_buffers)
     mod_exporter.export_mod()
