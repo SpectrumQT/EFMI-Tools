@@ -19,6 +19,7 @@ from ..migoto_io.blender_tools.vertex_groups import remove_unused_vertex_groups
 from ..data_models.data_model_efmi import DataModelEFMI
 
 from ..extract_frame_data.metadata_format import read_metadata
+from .assign_textures_slots import assign_textures
 
 
 # TODO: Add support of import of unhandled semantics into vertex attributes
@@ -64,6 +65,9 @@ class ObjectImporter:
             link_object_to_collection(obj, col)
             # if cfg.skip_empty_vertex_groups and cfg.import_skeleton_type == 'MERGED':
             #     remove_unused_vertex_groups(context, obj)
+
+        if cfg.import_texture:
+            assign_textures(object_source_folder)
 
         print(f'Total import time: {time.time() - start_time :.3f}s')
 

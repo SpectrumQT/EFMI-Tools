@@ -150,6 +150,12 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=False,
     ) # type: ignore
 
+    import_texture: BoolProperty(
+        name="Import Texture",
+        description="Assign textures from TextureUsage.json to imported meshes. Uses .dds files from the Object Sources folder",
+        default=False,
+    ) # type: ignore
+
     ########################################
     # LOD Import
     ########################################
