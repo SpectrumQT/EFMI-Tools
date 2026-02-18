@@ -98,8 +98,20 @@ class ModExporter:
             if component.lods is None:
                 component.lods = []
 
+            fmt_path = self.object_source_folder / f'Component {component_id}.fmt'
+            has_blend = False
             try:
-                merged_object = self.build_merged_object(component_id)
+                with open(fmt_path, 'r') as fmt_file:
+                    fmt_content = fmt_file.read()
+                    has_blend = 'BLENDWEIGHT' in fmt_content.upper() or 'BLENDINDICES' in fmt_content.upper()
+            except FileNotFoundError:
+                pass
+
+            if not has_blend and 'Blend' not in self.excluded_buffers:
+                self.excluded_buffers.append('Blend')
+
+            try:
+                merged_object = self.build_merged_object(component_id, skip_vertex_groups=not has_blend)
             except ConfigError as e:
                 raise e
             except Exception as e:
@@ -155,7 +167,7 @@ class ModExporter:
         if self.cfg.component_collection not in list(get_scene_collections()):
             raise ConfigError('component_collection', f'Collection "{self.cfg.component_collection.name}" is not a member of "Scene Collection"!')
 
-    def build_merged_object(self, component_id = -1):
+    def build_merged_object(self, component_id = -1, skip_vertex_groups: bool = False):
         start_time = time.time()
         object_merger = ObjectMerger(
             extracted_object=self.extracted_object,
@@ -167,10 +179,10 @@ class ModExporter:
             apply_modifiers=self.cfg.apply_all_modifiers,
             context=self.context,
             collection=self.cfg.component_collection,
-            skeleton_type=self.skeleton_type,
+            skeleton_type=None if skip_vertex_groups else self.skeleton_type,
             mesh_scale=1.00,
             mesh_rotation=(0, 0, 0),
-            add_missing_vertex_groups=self.cfg.add_missing_vertex_groups,
+            add_missing_vertex_groups=False if skip_vertex_groups else self.cfg.add_missing_vertex_groups,
             allow_empty_components=True,
         )
         print(f'Merged object build time: {time.time() - start_time :.3f}s ({self.merged_object.vertex_count} vertices, {self.merged_object.index_count} indices)')

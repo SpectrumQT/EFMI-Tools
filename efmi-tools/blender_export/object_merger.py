@@ -415,18 +415,16 @@ class ObjectMerger:
                     # Exclude VGs with 'ignore' tag or with higher VG id than total VG count from Metadata.ini
                     total_vg_count = sum([component.vg_count for component in self.extracted_object.components])
                     ignore_list = [vg for vg in vertex_groups if 'ignore' in vg.name.lower() or vg.index >= total_vg_count]
+                    remove_vertex_groups(temp_obj, ignore_list)
                 elif self.skeleton_type == SkeletonType.PerComponent:
                     # Exclude VGs with 'ignore' tag or with higher id VG count from Metadata.ini for current component
                     extracted_component = self.extracted_object.components[component_id]
-                    max_id = max(
-                        int(vg.name)
-                        for vg in obj.vertex_groups
-                        if vg.name.isdigit()
-                    )
-                    total_vg_count = max_id + 1
-                    # total_vg_count = len(extracted_component.vg_map)
-                    ignore_list = [vg for vg in vertex_groups if 'ignore' in vg.name.lower() or vg.index >= total_vg_count]
-                remove_vertex_groups(temp_obj, ignore_list)
+                    digit_vgs = [vg for vg in obj.vertex_groups if vg.name.isdigit()]
+                    if digit_vgs:
+                        max_id = max(int(vg.name) for vg in digit_vgs)
+                        total_vg_count = max_id + 1
+                        ignore_list = [vg for vg in vertex_groups if 'ignore' in vg.name.lower() or vg.index >= total_vg_count]
+                        remove_vertex_groups(temp_obj, ignore_list)
                 # Rename VGs to their indicies to merge ones of different components together
                 for vg in get_vertex_groups(temp_obj):
                     vg.name = str(vg.index)

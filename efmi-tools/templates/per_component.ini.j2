@@ -189,6 +189,7 @@ run = CommandListTriggerResourceOverrides
 ib = ref Resource_Component{{ componnet_id }}_IB
 vb0 = ref Resource_Component{{ componnet_id }}_VB0
 vb1 = ref Resource_Component{{ componnet_id }}_VB1
+{%- if 'Component' ~ componnet_id ~ '_VB2' in buffers %}
 {{note("Conditional VB2 (blends buffer) swap for LoDs handling")}}
 {%- if component.lods | length == 0 or component.lods[0].vg_map | length == 0 %}
 vb2 = ref Resource_Component{{ componnet_id }}_VB2
@@ -200,6 +201,7 @@ else
     {{note("Use VB2 with weights for LoD model")}}
     vb2 = ref Resource_Component{{ componnet_id }}_VB2_LOD
 endif
+{%- endif %}
 {%- endif %}
 {%- for obj in merged_object.components[componnet_id].objects %}
 ; Draw {{ obj.name }}

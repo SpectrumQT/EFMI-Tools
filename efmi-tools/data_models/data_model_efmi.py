@@ -166,7 +166,11 @@ class DataModelEFMI(DataModel):
 
         else:
 
-            tangents[:, 3] = vertex_buffer.get_field(Semantic.BitangentSign)
+            bitangent_signs = vertex_buffer.get_field(Semantic.BitangentSign)
+            if bitangent_signs is not None and self.flip_bitangent_sign:
+                bitangent_signs = -bitangent_signs
+            if bitangent_signs is not None:
+                tangents[:, 3] = bitangent_signs
 
 
 
