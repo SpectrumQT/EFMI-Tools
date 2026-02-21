@@ -101,14 +101,16 @@ It assumes that you already have basic knowledge about 3dmigoto-based modding, s
 
 ### Weights
 
+* To skip Vertex Group during **Mod Export**, add `ignore` keyword anywhere in it's name (case insensitive, so VG with name `SoMeNameIgNorE123` will be skipped).
 * Please do note that there's no Merged Skeleton feature currently available. It means that Vertex Groups are split between components, so you're limited to whatever set of bones each component originally uses.
 
 ### Modifiers
 
-* You can also use **[Apply All Modifiers]** checkbox in mod export option to autoamtically apply exisitng modifiers to temp copies of objects during temp merged object creation on mod export.
+* To autoamtically apply exisitng modifiers during **Mod Export**, enable **[Apply All Modifiers]** checkbox. It affects temporary export object only, while original mesh remains untouched.
 
 ### Shape Keys
 
+* To skip Shape Key during **Mod Export**, just mute it (uncheck its checkbox in the Shape Keys list).
 * Game doesn't use shapekeys, everything is weighted. But feel free to use them in Blender for own convenience!
 > I plan to introduce custom shapekeys system to EFMI in the future.
 
