@@ -106,7 +106,7 @@ It assumes that you already have basic knowledge about 3dmigoto-based modding, s
 
 ### Modifiers
 
-* To autoamtically apply exisitng modifiers during **Mod Export**, enable **[Apply All Modifiers]** checkbox. It affects temporary export object only, while original mesh remains untouched.
+* To automatically apply exisitng modifiers during **Mod Export**, enable **[Apply All Modifiers]** checkbox. It affects temporary export object only, while original mesh remains untouched.
 
 ### Shape Keys
 

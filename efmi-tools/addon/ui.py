@@ -155,7 +155,7 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
                     row.prop(cfg, 'ignore_hidden_collections')
                 
             layout.row().prop(cfg, 'ignore_hidden_objects')
-            # layout.row().prop(cfg, 'ignore_muted_shape_keys')
+            layout.row().prop(cfg, 'ignore_muted_shape_keys')
 
 
     def draw_menu_import_object(self, context):
