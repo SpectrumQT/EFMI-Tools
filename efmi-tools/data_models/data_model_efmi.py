@@ -68,7 +68,7 @@ class DataModelEFMI(DataModel):
         # Set import_format for NORMAL0 to prevent automatic addition of default format converter (one that would reshape array from 1 to 1,3)
         # buffer_semanic = vertex_buffer.layout.get_element(AbstractSemantic(Semantic.EncodedData))
         # buffer_semanic.import_format = DXGIFormat.R32G32B32_FLOAT
-        encoded_data = vertex_buffer.get_field(AbstractSemantic(Semantic.EncodedData))
+        encoded_data = vertex_buffer.get_field(AbstractSemantic(Semantic.EncodedData, semantic_index=0))
 
         if encoded_data is not None:
             try:
@@ -168,19 +168,27 @@ class DataModelEFMI(DataModel):
 
             tangents[:, 3] = vertex_buffer.get_field(Semantic.BitangentSign)
 
-
-
         # positions = vertex_buffer.get_field(AbstractSemantic(Semantic.Position))
         # uvs = vertex_buffer.get_field(AbstractSemantic(Semantic.TexCoord))
 
-        # DEBUG: Tangents encoder test (write result to new vertex attribute)
+        # # DEBUG: Tangents encoder test (write result to new vertex attribute)
         # def test_tangents_encoder(tangents, normals):
         #     data = self.encode_tangents(tangents, normals)
+            
         #     negatives = numpy.where(data < 0, data, 0)
         #     positives = numpy.where(data > 0, data, 0)
+
         #     data = numpy.stack([negatives*-1, positives], axis=1)
-        #     self._create_verterx_attribute('TANGENT_NEW_TEST', 'Component 0.007', data, vertex_ids)
+        #     self._create_verterx_attribute('TANGENT_NEW_TEST', obj.name, data, vertex_ids)
+        #     self._create_verterx_attribute('TANGENT_NEW_TEST', 'Component 10 122c46be.002', data, vertex_ids)
         # test_tangents_encoder(tangents, normals)
+
+        # face_normals = numpy.array([poly.normal[:] for poly in mesh.polygons])
+        # vertex_face_normals = numpy.zeros((len(mesh.vertices), 3), dtype=numpy.float32)
+        # for poly, fn in zip(mesh.polygons, face_normals):
+        #     for vi in poly.vertices:
+        #         vertex_face_normals[vi] += fn
+        # normals = vertex_face_normals[vertex_ids]
 
         # DEBUG: Zero-out COLOR0
         # color0 = vertex_buffer.get_field(AbstractSemantic(Semantic.Color))
@@ -228,49 +236,115 @@ class DataModelEFMI(DataModel):
             return normals
 
     @staticmethod
-    def encode_tangents(tangents: numpy.ndarray, normals: numpy.ndarray) -> numpy.ndarray:
-        # Calculate inverted tangents sum
-        tan_sum = numpy.sum(tangents, axis=1)
+    def encode_tangents(tangents: numpy.ndarray, normals: numpy.ndarray):
+        # Reference tangent
+        R = numpy.stack([
+            normals[:,1] - normals[:,2],
+            normals[:,2] - normals[:,0],
+            normals[:,0] - normals[:,1]
+        ], axis=1)
 
-        # Multiply tangent sum by arbitrary parameter to match OG brightness
-        # This way we achieve the same base values but some parts aren't as bright as required
-        tan_sum *= 0.2
+        R_norm = numpy.linalg.norm(R, axis=1, keepdims=True)
+        small_mask = R_norm[:,0] < 1e-6
+        
+        # Build perpendicular vector for degenerate cases
+        if numpy.any(small_mask):
+            helper = numpy.where(numpy.abs(normals[:,0:1]) < 0.9, numpy.array([1.0,0.0,0.0]), numpy.array([0.0,1.0,0.0]))
+            v_perp = numpy.cross(normals, helper)
+            v_perp /= numpy.linalg.norm(v_perp, axis=1, keepdims=True)
 
-        # Calculate angle angle of tangent in the normal’s plane
-        # We'll use it as source of magnitudes for parts that should be brighter than baseline
+            # Select R
+            R = numpy.where(small_mask[:,None], v_perp, R / R_norm)
 
-        # 1. Choose a stable "up" vector per normal
-        up = numpy.tile(numpy.array([0.0, 0.0, 1.0]), (normals.shape[0], 1))
-        mask = numpy.abs(normals[:,2]) > 0.99
-        up[mask] = numpy.array([0.0, 1.0, 0.0])
+        # Bitangent B = cross(R, N)
+        B = numpy.cross(R, normals)
 
-        # 2. Compute basisX = normalize(cross(up, normal))
-        basisX = numpy.cross(up, normals)
-        basisX /= numpy.linalg.norm(basisX, axis=1, keepdims=True)
+        # Project tangent onto the basis {R, B}
+        cos_theta = numpy.sum(tangents * R, axis=1)
+        sin_theta = numpy.sum(tangents * B, axis=1)
 
-        # 3. Compute basisY = cross(normal, basisX)
-        basisY = numpy.cross(normals, basisX)
+        # Clamp to avoid numerical issues
+        cos_theta = numpy.clip(cos_theta, -1.0, 1.0)
+        sin_theta = numpy.clip(sin_theta, -1.0, 1.0)
 
-        # 4. Project tangent into basis
-        u = numpy.sum(tangents * basisX, axis=1)
-        v = numpy.sum(tangents * basisY, axis=1)
+        # Compute parameter t in [0,1]
+        denom = numpy.abs(cos_theta) + numpy.abs(sin_theta)
+        u_t = cos_theta / denom
+        t = 1 - (1 - u_t) / 2.0
 
-        # 5. Encode angles
-        angle = numpy.arctan2(v, u)  # [-pi, pi]
-        encoded_angles = angle / numpy.pi   # [-1,1]
+        # Sign of sin (treat zero as positive)
+        s = numpy.where(sin_theta == 0.0, 1.0, numpy.sign(sin_theta))
+        t = numpy.copysign(t, s)
 
-        # Copy sign from tangent sum to encoded angle (so we'll get)
-        # So we use "color" from tangent sum and "abs value" aka magnitudes from encoded angle
-        encoded_angles = numpy.copysign(encoded_angles, tan_sum)
+        return t
 
-        # Multiply result by arbitrary parameter to limit max brightness to nearly match OG max one
-        # encoded_angles *= 0.9
+    @staticmethod
+    def encode_tangents_debug(tangents: numpy.ndarray, normals: numpy.ndarray):
+        # Reference tangent R = (Ny - Nz, Nz - Nx, Nx - Ny)
+        R = numpy.stack([
+            normals[:,1] - normals[:,2],
+            normals[:,2] - normals[:,0],
+            normals[:,0] - normals[:,1]
+        ], axis=1)
 
-        # Overwrite all encoded angle abs values below tangent sum with tangent sum ones
-        mask = numpy.abs(tan_sum) > numpy.abs(encoded_angles)
-        encoded_angles[mask] = tan_sum[mask]
+        R_norm = numpy.linalg.norm(R, axis=1, keepdims=True)
+        small_mask = R_norm[:, 0] < 1e-6
 
-        return encoded_angles
+        # Normalise R, but handle degenerate cases where R is zero
+        if numpy.any(small_mask):
+            # For degenerate normals, build an arbitrary perpendicular vector
+            abs_n = numpy.abs(normals)
+            min_idx = numpy.argmin(abs_n, axis=1)   # index of smallest component
+            v_perp = numpy.zeros_like(normals)
+
+            mask0 = (min_idx == 0) & small_mask
+            if numpy.any(mask0):
+                v_perp[mask0, 0] = 0.0
+                v_perp[mask0, 1] = -normals[mask0, 2]
+                v_perp[mask0, 2] =  normals[mask0, 1]
+
+            mask1 = (min_idx == 1) & small_mask
+            if numpy.any(mask1):
+                v_perp[mask1, 0] =  normals[mask1, 2]
+                v_perp[mask1, 1] = 0.0
+                v_perp[mask1, 2] = -normals[mask1, 0]
+
+            mask2 = (min_idx == 2) & small_mask
+            if numpy.any(mask2):
+                v_perp[mask2, 0] = -normals[mask2, 1]
+                v_perp[mask2, 1] =  normals[mask2, 0]
+                v_perp[mask2, 2] = 0.0
+
+            # Normalise the perpendicular vectors
+            v_norm = numpy.linalg.norm(v_perp, axis=1, keepdims=True)
+            v_perp = v_perp / v_norm
+            R[small_mask] = v_perp[small_mask]
+
+        # Now normalise R for the rest
+        R[~small_mask] = R[~small_mask] / R_norm[~small_mask]
+
+        # Bitangent B = cross(R, N)
+        B = numpy.cross(R, normals, axis=1)
+
+        # Project tangent onto the basis {R, B}
+        cos_theta = numpy.sum(tangents * R, axis=1)
+        sin_theta = numpy.sum(tangents * B, axis=1)
+
+        # Clamp to avoid numerical issues
+        cos_theta = numpy.clip(cos_theta, -1.0, 1.0)
+        sin_theta = numpy.clip(sin_theta, -1.0, 1.0)
+
+        # Compute parameter t in [0,1]
+        denom = numpy.abs(cos_theta) + numpy.abs(sin_theta)
+        u_t = cos_theta / denom
+        t = (1.0 - u_t) / 2.0
+        t = 1 - t
+                
+        # Sign of sin (treat zero as positive)
+        s = numpy.where(sin_theta == 0.0, 1.0, numpy.sign(sin_theta))
+        t = numpy.copysign(t, s)
+
+        return t
 
     def encode_tbn_data_10_10_10_2(self, normals: numpy.ndarray, tangents: numpy.ndarray, bitangent_signs: numpy.ndarray) -> numpy.ndarray:
         """
