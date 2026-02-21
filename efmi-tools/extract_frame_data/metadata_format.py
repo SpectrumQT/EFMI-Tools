@@ -76,12 +76,20 @@ class EnumEncoder(json.JSONEncoder):
 
 
 @dataclass
+class ObjectRotation:
+    x: int = 0
+    y: int = 0
+    z: int = 0
+
+
+@dataclass
 class ExtractedObject:
     ib_hash: str
     vb0_hash: str
     cb4_hash: str
     vertex_count: int
     index_count: int
+    rotation: ObjectRotation
     components: List[ExtractedObjectComponent]
     shapekeys: ExtractedObjectShapeKeys
     export_format: Dict[str, ExtractedObjectBuffer]

@@ -79,7 +79,7 @@ class ModExporter:
             raise ConfigError('object_source_folder', """
                 No LODs found for object's components in Metadata.json!
                 Mod exported without LOD data will not work in open world.
-                Switch toolkit to "Import LoDs From Dump" mode and feed it with open world dump.
+                Switch toolkit to "Extract LoDs From Dump" mode and feed it with open world dump.
                 Please do note that to dump character LODs correctly you should switch to another character and take a few steps back.
             """)
         
@@ -213,6 +213,8 @@ class ModExporter:
                 ib_buffer_semantic.stride = ib_buffer_semantic.format.byte_width * 3
                 ib_layout.stride = ib_buffer_semantic.stride
 
+            rotation = (0, 0, 0) if not self.extracted_object.rotation else (-self.extracted_object.rotation.x, -self.extracted_object.rotation.y, -self.extracted_object.rotation.z)
+
             buffers, vertex_count = data_model.get_data(
                 self.context, 
                 self.cfg.component_collection, 
@@ -221,6 +223,7 @@ class ModExporter:
                 self.excluded_buffers,
                 buffers_format,
                 self.cfg.mirror_mesh,
+                rotation,
                 index_layout)
             
             self.buffers.update(buffers)

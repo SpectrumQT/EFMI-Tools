@@ -73,6 +73,7 @@ class DataModelEFMI(DataModel):
         if encoded_data is not None:
             try:
                 decoded_normals = self.decode_tbn_data_10_10_10_2(encoded_data)
+                decoded_normals = self.converter_rotate_vector(decoded_normals, mesh_rotation)
             except Exception as e:
                 raise e
             
@@ -109,6 +110,7 @@ class DataModelEFMI(DataModel):
                  excluded_buffers: List[str],
                  buffers_format: Optional[Dict[str, BufferLayout]] = None,
                  mirror_mesh: bool = False,
+                 mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
                  object_index_layout: Optional[List[int]] = None) -> Tuple[Dict[str, NumpyBuffer], int, Optional[List[int]]]:
 
         if buffers_format is None:
@@ -143,7 +145,7 @@ class DataModelEFMI(DataModel):
                     mesh.color_attributes.new(name=color_semantic.get_name(), type='FLOAT_COLOR', domain='CORNER')
                 break
 
-        index_data, vertex_buffer = self.export_data(context, collection, mesh, excluded_buffers, buffers_format, mirror_mesh, build_blend_remaps)
+        index_data, vertex_buffer = self.export_data(context, collection, mesh, excluded_buffers, buffers_format, mirror_mesh, mesh_rotation, build_blend_remaps)
 
         # Remove TBN, we don't want to export it as buffer
         del buffers_format['TBN']

@@ -11,7 +11,7 @@ from ..migoto_io.dump_parser.filename_parser import ResourceDescriptor, WrappedR
 
 from .shapekey_builder import ShapeKeys
 from .component_builder import MeshObject
-from .metadata_format import ExtractedObject, ExtractedObjectComponent, ExtractedObjectShapeKeys, ExtractedObjectBuffer, ExtractedObjectBufferSemantic
+from .metadata_format import ExtractedObject, ObjectRotation, ExtractedObjectComponent, ExtractedObjectShapeKeys, ExtractedObjectBuffer, ExtractedObjectBufferSemantic
 
 
 @dataclass
@@ -220,7 +220,7 @@ class OutputBuilder:
             cb4_hash=mesh_object.cb4_hash,
             vertex_count=mesh_object.vertex_count,
             index_count=mesh_object.index_count,
-
+            rotation=ObjectRotation(90, 0, 0) if mesh_object.object_id.startswith('Factory') else ObjectRotation(0, 0, 0),
             components=[
                 ExtractedObjectComponent(
                     ib_hash=component.ib_hash,

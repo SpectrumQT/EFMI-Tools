@@ -119,12 +119,13 @@ class DataModel:
                  excluded_buffers: List[str], 
                  buffers_format: Optional[Dict[str, BufferLayout]] = None,
                  mirror_mesh: bool = False,
+                 mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
                  object_index_layout: Optional[List[int]] = None) -> Tuple[Dict[str, NumpyBuffer], int, Optional[List[int]]]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
 
-        index_data, vertex_buffer = self.export_data(context, collection, mesh, excluded_buffers, buffers_format, mirror_mesh)
+        index_data, vertex_buffer = self.export_data(context, collection, mesh, excluded_buffers, buffers_format, mirror_mesh, mesh_rotation)
 
         buffers = self.build_buffers(index_data, vertex_buffer, excluded_buffers, buffers_format)
 
@@ -171,12 +172,13 @@ class DataModel:
                     excluded_buffers: List[str], 
                     buffers_format: Dict[str, BufferLayout],
                     mirror_mesh: bool = False,
+                    mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
                     cache_index_data: bool = False):
 
         if self.data_extractor is None:
             self.data_extractor = BlenderDataExtractor()
         export_layout, fetch_loop_data = self.make_export_layout(buffers_format, excluded_buffers)
-        index_data, vertex_buffer = self.get_mesh_data(context, collection, mesh, export_layout, fetch_loop_data, mirror_mesh, cache_index_data)
+        index_data, vertex_buffer = self.get_mesh_data(context, collection, mesh, export_layout, fetch_loop_data, mirror_mesh, mesh_rotation, cache_index_data)
         return index_data, vertex_buffer
 
     def make_export_layout(self, 
@@ -213,6 +215,7 @@ class DataModel:
                       export_layout: BufferLayout, 
                       fetch_loop_data: bool, 
                       mirror_mesh: bool = False,
+                      mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
                       cache_index_data: bool = False):
         
         vertex_ids_cache, cache_vertex_ids = None, False
@@ -259,6 +262,10 @@ class DataModel:
             # Invert X coord of every vector in arrays required to mirror mesh
             if mirror_mesh and semantic.abstract.enum in [Semantic.Position, Semantic.Normal, Semantic.Tangent]:
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_mirror_vector)
+            # Rotate coords of every vector in arrays required to rotate mesh
+            if mesh_rotation and semantic.abstract.enum in [Semantic.Position, Semantic.Normal, Semantic.Tangent]:
+                converter = lambda data: self.converter_rotate_vector(data, mesh_rotation)
+                self._insert_converter(semantic_converters, semantic.abstract, converter)
             # Flip V component of UV maps
             if self.flip_texcoord_v and semantic.abstract.enum == Semantic.TexCoord:
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_flip_texcoord_v)
