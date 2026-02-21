@@ -97,6 +97,11 @@ class DataExtractor:
                 ): BufferSemantic(
                     AbstractSemantic(Semantic.Color, 2), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
             ),
+            BufferSemantic(
+                AbstractSemantic(Semantic.TexCoord, 4), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
+                ): BufferSemantic(
+                    AbstractSemantic(Semantic.Color, 1), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
+            ),
         }
         self.expected_input_slots = {
             AbstractSemantic(Semantic.Position, 0): [0],
@@ -134,6 +139,7 @@ class DataExtractor:
             # BufferSemantic(AbstractSemantic(Semantic.Tangent, 0), format=DXGIFormat.R32G32B32A32_FLOAT, input_slot=0, offset=24): 40,  # Levi brows
             BufferSemantic(AbstractSemantic(Semantic.TexCoord, 1), format=DXGIFormat.R32G32_FLOAT, input_slot=1, offset=8): 20,  # Levi
             BufferSemantic(AbstractSemantic(Semantic.Color, 1), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2, offset=0): 8,
+            BufferSemantic(AbstractSemantic(Semantic.Color, 2), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2, offset=4): 8,
         }
 
         self.handle_shapekey_cs_0(list(self.call_branches.values()))
