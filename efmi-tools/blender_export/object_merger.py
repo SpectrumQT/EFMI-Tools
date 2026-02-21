@@ -404,6 +404,12 @@ class ObjectMerger:
                         bpy.ops.object.convert(target='MESH')
                     # Triangulate (this step is crucial since export supports only triangles)
                     triangulate_object(self.context, temp_obj)
+                    # Handle missing UV map
+                    uv_name = f'TEXCOORD.xy'
+                    if uv_name not in temp_obj.data.uv_layers:
+                        uv_layer = temp_obj.data.uv_layers.new(name=uv_name)
+                        uv_data = numpy.zeros(len(uv_layer.data) * 2, dtype=numpy.float32)
+                        uv_layer.data.foreach_set('uv', uv_data)
                 # Handle Vertex Groups
                 vertex_groups = get_vertex_groups(temp_obj)
                 # Fill gaps in Vertex Groups list based on VG names (i.e. add group '1' between '0' and '2' if it's missing)
