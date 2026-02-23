@@ -240,6 +240,7 @@ class ComponentBuilder:
     shader_hashes: Dict[str, str]
     shapekeys: Dict[str, ShapeKeys]
     draw_data: Dict[tuple, DrawData]
+    skip_objects_without_textures: bool = False
     # Output
     mesh_objects: Dict[str, MeshObject] = field(init=False)
 
@@ -259,7 +260,7 @@ class ComponentBuilder:
             if draw_data is None:
                 raise ValueError(f'no draw data found for component {":".join(draw_guid)}')
             
-            if not draw_data.textures:
+            if self.skip_objects_without_textures and not draw_data.textures:
                 continue
             
             positions = draw_data.buffers['VB0'].buffer.get_field(AbstractSemantic(Semantic.Position))[:, 2]

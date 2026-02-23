@@ -307,7 +307,8 @@ def extract_frame_data(cfg, extract_lods=False):
         output_vb_layout=None,
         shader_hashes=data_extractor.shader_hashes,
         shapekeys=shapekeys.shapekeys,
-        draw_data=data_extractor.draw_data
+        draw_data=data_extractor.draw_data,
+        skip_objects_without_textures=not extract_lods,
     )
 
     # Build output data object
