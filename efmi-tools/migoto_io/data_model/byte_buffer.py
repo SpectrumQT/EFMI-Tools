@@ -67,6 +67,10 @@ class Topology(Enum):
         return f'{self.value}'
 
 
+SEMANTIC_ALIASES = {
+    'BLENDWEIGHT': 'BLENDWEIGHTS',
+}
+
 class Semantic(Enum):
     VertexId = 'VERTEXID'
     Index = 'INDEX'
@@ -77,30 +81,28 @@ class Semantic(Enum):
     Color = 'COLOR'
     Position = 'POSITION'
     Blendindices = 'BLENDINDICES'
-    Blendweight = 'BLENDWEIGHTS'
+    Blendweight = 'BLENDWEIGHT'
     Blendweights = 'BLENDWEIGHTS'
     ShapeKey = 'SHAPEKEY'
     RawData = 'RAWDATA'
     EncodedData = 'ENCODEDDATA'
     Attribute = 'ATTRIBUTE'
 
-    _ALIASES = {
-        'BLENDWEIGHT': 'BLENDWEIGHTS',
-    }
-
-    @classmethod
-    def _missing_(cls, value):
-        if isinstance(value, str):
-            value = value.upper()
-            if value in cls._ALIASES:
-                return cls(cls._ALIASES[value])
-        return super()._missing_(value)
-
     def __str__(self):
         return f'{self.value}'
 
     def __repr__(self):
         return f'{self.value}'
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other or SEMANTIC_ALIASES.get(self.value) == other
+        if isinstance(other, Semantic):
+            return self.value == other.value or SEMANTIC_ALIASES.get(self.value) == other.value
+        return super().__eq__(other)
+
+    def __hash__(self):
+        return hash(self.value)
 
 
 class InputSlotClass(Enum):
