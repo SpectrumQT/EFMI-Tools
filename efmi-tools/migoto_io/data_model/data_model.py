@@ -48,15 +48,17 @@ class DataModel:
         Semantic.Attribute: DXGIFormat.R32G32B32A32_FLOAT,
     }
 
-    def set_data(self, 
-                 obj: bpy.types.Mesh, 
-                 mesh: bpy.types.Mesh, 
-                 index_buffer: NumpyBuffer,
-                 vertex_buffer: NumpyBuffer,
-                 vg_remap: Optional[numpy.ndarray],
-                 mirror_mesh: bool = False,
-                 mesh_scale: float = 1.0,
-                 mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0)):
+    def set_data(
+            self, 
+            obj: bpy.types.Mesh, 
+            mesh: bpy.types.Mesh, 
+            index_buffer: NumpyBuffer,
+            vertex_buffer: NumpyBuffer,
+            vg_remap: Optional[numpy.ndarray],
+            mirror_mesh: bool = False,
+            mesh_scale: float = 1.0,
+            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0)
+        ):
 
         if self.data_importer is None:
             self.data_importer = BlenderDataImporter()
@@ -77,18 +79,20 @@ class DataModel:
             # Skip tangents import, we'll recalc them on export
             if semantic.abstract.enum in [Semantic.Tangent, Semantic.BitangentSign]:
                 continue
-            # Modify coordinate (vector-based) semantics
+            # Modify directional (vector-based) semantics
             if semantic.abstract.enum in [Semantic.Position, Semantic.ShapeKey, Semantic.Normal]:
                 # Invert X coord of every vector in arrays required to mirror mesh
                 if mirror_mesh:
                     self._insert_converter(semantic_converters, semantic.abstract, self.converter_mirror_vector)
-                # Scale coords of every vector in arrays required to scale mesh
-                if mesh_scale != 1.0:
-                    converter = lambda data: self.converter_scale_vector(data, mesh_scale)
-                    self._insert_converter(semantic_converters, semantic.abstract, converter)
                 # Rotate coords of every vector in arrays required to rotate mesh
                 if mesh_rotation != (0.0, 0.0, 0.0):
                     converter = lambda data: self.converter_rotate_vector(data, mesh_rotation)
+                    self._insert_converter(semantic_converters, semantic.abstract, converter)
+            # Modify coordinate semantics
+            if semantic.abstract.enum in [Semantic.Position, Semantic.ShapeKey]:
+                # Scale coords of every vector in arrays required to scale mesh
+                if mesh_scale != 1.0:
+                    converter = lambda data: self.converter_scale_vector(data, mesh_scale)
                     self._insert_converter(semantic_converters, semantic.abstract, converter)
             # Flip V component of UV maps
             if self.flip_texcoord_v and semantic.abstract.enum == Semantic.TexCoord:
@@ -111,21 +115,32 @@ class DataModel:
 
         data_importer.set_data(obj, mesh, index_buffer, vertex_buffer, semantic_converters, format_converters, self.legacy_vertex_colors)
 
-    def get_data(self, 
-                 context: bpy.types.Context, 
-                 collection: bpy.types.Collection, 
-                 obj: bpy.types.Object, 
-                 mesh: bpy.types.Mesh, 
-                 excluded_buffers: List[str], 
-                 buffers_format: Optional[Dict[str, BufferLayout]] = None,
-                 mirror_mesh: bool = False,
-                 mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
-                 object_index_layout: Optional[List[int]] = None) -> Tuple[Dict[str, NumpyBuffer], int, Optional[List[int]]]:
+    def get_data(
+            self, 
+            context: bpy.types.Context, 
+            collection: bpy.types.Collection, 
+            obj: bpy.types.Object,
+            excluded_buffers: List[str], 
+            buffers_format: Optional[Dict[str, BufferLayout]] = None,
+            mirror_mesh: bool = False,
+            mesh_scale: float = 1.0,
+            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+            object_index_layout: Optional[List[int]] = None
+        ) -> Tuple[Dict[str, NumpyBuffer], int, Optional[List[int]]]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
 
-        index_data, vertex_buffer = self.export_data(context, collection, mesh, excluded_buffers, buffers_format, mirror_mesh, mesh_rotation)
+        index_data, vertex_buffer = self.export_data(
+            context=context,
+            collection=collection,
+            mesh=obj.evaluated_get(context.evaluated_depsgraph_get()).to_mesh(),
+            excluded_buffers=excluded_buffers,
+            buffers_format=buffers_format,
+            mirror_mesh=mirror_mesh,
+            mesh_scale=mesh_scale,
+            mesh_rotation=mesh_rotation,
+        )
 
         buffers = self.build_buffers(index_data, vertex_buffer, excluded_buffers, buffers_format)
 
@@ -165,20 +180,33 @@ class DataModel:
 
         return result
 
-    def export_data(self, 
-                    context: bpy.types.Context, 
-                    collection: bpy.types.Collection, 
-                    mesh: bpy.types.Mesh, 
-                    excluded_buffers: List[str], 
-                    buffers_format: Dict[str, BufferLayout],
-                    mirror_mesh: bool = False,
-                    mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
-                    cache_index_data: bool = False):
+    def export_data(
+            self, 
+            context: bpy.types.Context, 
+            collection: bpy.types.Collection, 
+            mesh: bpy.types.Mesh, 
+            excluded_buffers: List[str], 
+            buffers_format: Dict[str, BufferLayout],
+            mirror_mesh: bool = False,
+            mesh_scale: float = 1.0,
+            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+            cache_index_data: bool = False
+        ):
 
         if self.data_extractor is None:
             self.data_extractor = BlenderDataExtractor()
         export_layout, fetch_loop_data = self.make_export_layout(buffers_format, excluded_buffers)
-        index_data, vertex_buffer = self.get_mesh_data(context, collection, mesh, export_layout, fetch_loop_data, mirror_mesh, mesh_rotation, cache_index_data)
+        index_data, vertex_buffer = self.get_mesh_data(
+            context=context,
+            collection=collection,
+            mesh=mesh,
+            export_layout=export_layout,
+            fetch_loop_data=fetch_loop_data,
+            mirror_mesh=mirror_mesh,
+            mesh_scale=mesh_scale,
+            mesh_rotation=mesh_rotation,
+            cache_index_data=cache_index_data,
+        )
         return index_data, vertex_buffer
 
     def make_export_layout(self, 
@@ -208,15 +236,18 @@ class DataModel:
 
         return export_layout, fetch_loop_data
 
-    def get_mesh_data(self, 
-                      context: bpy.types.Context, 
-                      collection: bpy.types.Collection,
-                      mesh: bpy.types.Mesh, 
-                      export_layout: BufferLayout, 
-                      fetch_loop_data: bool, 
-                      mirror_mesh: bool = False,
-                      mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
-                      cache_index_data: bool = False):
+    def get_mesh_data(
+            self, 
+            context: bpy.types.Context, 
+            collection: bpy.types.Collection,
+            mesh: bpy.types.Mesh, 
+            export_layout: BufferLayout, 
+            fetch_loop_data: bool, 
+            mirror_mesh: bool = False,
+            mesh_scale: float = 1.0,
+            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+            cache_index_data: bool = False,
+        ):
         
         vertex_ids_cache, cache_vertex_ids = None, False
 
@@ -224,24 +255,24 @@ class DataModel:
         flip_bitangent_sign = self.flip_bitangent_sign if not mirror_mesh else not self.flip_bitangent_sign
 
         if not fetch_loop_data:
-            if collection != context.scene.efmi_tools_settings.vertex_ids_cached_collection:
+            if collection != context.scene.wwmi_tools_settings.vertex_ids_cached_collection:
                 # Cache contains data for different object and must be cleared
-                context.scene.efmi_tools_settings.vertex_ids_cache = ''
+                context.scene.wwmi_tools_settings.vertex_ids_cache = ''
                 fetch_loop_data = True
                 cache_vertex_ids = True
             else:
                 # Partial export is enabled
-                if context.scene.efmi_tools_settings.vertex_ids_cache:
+                if context.scene.wwmi_tools_settings.vertex_ids_cache:
                     # Valid vertex ids cache exists, lets load it
-                    vertex_ids_cache = numpy.array(json.loads(context.scene.efmi_tools_settings.vertex_ids_cache))
+                    vertex_ids_cache = numpy.array(json.loads(context.scene.wwmi_tools_settings.vertex_ids_cache))
                 else:
                     # Cache is clear, we'll have to fetch loop data once 
                     fetch_loop_data = True
                     cache_vertex_ids = True
-        elif context.scene.efmi_tools_settings.vertex_ids_cache:
+        elif context.scene.wwmi_tools_settings.vertex_ids_cache:
             # We're going to fetch loop data, cache must be cleared
-            context.scene.efmi_tools_settings.vertex_ids_cache = ''
-            context.scene.efmi_tools_settings.index_data_cache = ''
+            context.scene.wwmi_tools_settings.vertex_ids_cache = ''
+            context.scene.wwmi_tools_settings.index_data_cache = ''
 
         # Copy default converters
         semantic_converters, format_converters = {}, {}
@@ -262,8 +293,12 @@ class DataModel:
             # Invert X coord of every vector in arrays required to mirror mesh
             if mirror_mesh and semantic.abstract.enum in [Semantic.Position, Semantic.Normal, Semantic.Tangent]:
                 self._insert_converter(semantic_converters, semantic.abstract, self.converter_mirror_vector)
+            # Scale coords of every vector in arrays required to scale mesh
+            if mesh_scale != 1.0 and semantic.abstract.enum in [Semantic.Position, Semantic.ShapeKey]:
+                converter = lambda data: self.converter_scale_vector(data, mesh_scale)
+                self._insert_converter(semantic_converters, semantic.abstract, converter)
             # Rotate coords of every vector in arrays required to rotate mesh
-            if mesh_rotation and semantic.abstract.enum in [Semantic.Position, Semantic.Normal, Semantic.Tangent]:
+            if mesh_rotation and semantic.abstract.enum in [Semantic.Position, Semantic.ShapeKey, Semantic.Normal, Semantic.Tangent]:
                 converter = lambda data: self.converter_rotate_vector(data, mesh_rotation)
                 self._insert_converter(semantic_converters, semantic.abstract, converter)
             # Flip V component of UV maps
@@ -277,10 +312,10 @@ class DataModel:
         if cache_vertex_ids:
             # As vertex_ids_cache is None, get_data fetched loop data for us and we can cache vertex ids
             vertex_ids = vertex_buffer.get_field(AbstractSemantic(Semantic.VertexId).get_name())
-            context.scene.efmi_tools_settings.vertex_ids_cache = json.dumps(vertex_ids.tolist())
+            context.scene.wwmi_tools_settings.vertex_ids_cache = json.dumps(vertex_ids.tolist())
             if cache_index_data:
-                context.scene.efmi_tools_settings.index_data_cache = json.dumps(index_buffer.tolist())
-            context.scene.efmi_tools_settings.vertex_ids_cached_collection = collection
+                context.scene.wwmi_tools_settings.index_data_cache = json.dumps(index_buffer.tolist())
+            context.scene.wwmi_tools_settings.vertex_ids_cached_collection = collection
 
         return index_buffer, vertex_buffer
 
@@ -489,7 +524,7 @@ class DataModel:
         converters[abstract_semantic].insert(0, converter)
             
     @staticmethod
-    def converter_normalize_weights(weights: numpy.ndarray, sanitize=True, dtype=numpy.dtype):
+    def converter_normalize_weights_old(weights: numpy.ndarray, sanitize=True, dtype=numpy.dtype):
         """
         Normalizes 2-dim array of per-vertex float32 weights to uint8 (0-255 range) or uint16 (0-65535 range)
         Precision error caused by float truncation is distributed according to precision loss factor
@@ -555,6 +590,71 @@ class DataModel:
 
         return normalized_weights
     
+    @staticmethod
+    def converter_normalize_weights(weights: numpy.ndarray, sanitize=True, dtype=numpy.dtype):
+        """
+        Normalizes 2-dim array of per-vertex float32 weights to uint8 (0-255 range) or uint16 (0-65535 range)
+        Precision error caused by float truncation is distributed according to precision loss factor
+        Precision loss factor is calculated as (weight_float_part / weight_integer_part)
+        Weights with bigger precision loss factors are getting 1's from total precision error value
+        """
+        # Step 0: Detect quantization target
+        if dtype == numpy.uint8:
+            container_max = 255
+        elif dtype == numpy.uint16:
+            container_max = 65535
+        else:
+            raise ValueError(f'Cannot normalize to dtype {dtype} (not supported)')
+
+        # Step 1: Sanitize weights and threshold minimal precision
+        if sanitize:
+            weights = numpy.nan_to_num(weights, nan=0.0, posinf=0.0, neginf=0.0)
+        weights[weights < 1/container_max] = 0.0
+
+        # Step 2: Normalize weights to sum = 1 per vertex
+        weight_sums = weights.sum(axis=1, keepdims=True)
+        zero_sums_idx = numpy.where(weight_sums <= 0)[0]
+        if len(zero_sums_idx) > 0:
+            weights[zero_sums_idx, 0] = 1.0
+            weight_sums[zero_sums_idx] = 1.0
+        weights /= weight_sums
+
+        # Step 3: Scale to target integer range
+        scaled = weights * container_max
+        truncated = scaled.astype(dtype)
+
+        # Step 4: Calculate precision error
+        absolute_loss = scaled - truncated
+        precision_error = container_max - truncated.sum(axis=1, keepdims=True)
+
+        # Step 5: Only process rows with non-zero precision error
+        non_zero_error_idx = numpy.where(precision_error[:, 0] > 0)[0]
+        if len(non_zero_error_idx) > 0:
+            # Compute loss factor safely
+            loss_factor = numpy.divide(
+                absolute_loss[non_zero_error_idx],
+                truncated[non_zero_error_idx],
+                out=numpy.zeros_like(absolute_loss[non_zero_error_idx]),
+                where=truncated[non_zero_error_idx] != 0
+            )
+
+            # Sort indices descending by loss factor per row
+            sort_idx = numpy.argsort(-loss_factor, axis=1)
+
+            # Prepare broadcast indices for numpy.add.at
+            row_idx = numpy.repeat(non_zero_error_idx[:, None], weights.shape[1], axis=1)
+            col_idx = sort_idx
+
+            # Generate mask for distributing +1s
+            mask = numpy.arange(weights.shape[1])[None, :] < precision_error[non_zero_error_idx]
+            flattened_row = row_idx[mask]
+            flattened_col = col_idx[mask]
+
+            # Apply +1s to truncated weights
+            numpy.add.at(truncated, (flattened_row, flattened_col), 1)
+
+        return truncated
+
     @staticmethod
     def converter_normalize_wights_8bit(weights: numpy.ndarray, sanitize_weights=True):
         """
