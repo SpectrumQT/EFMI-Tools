@@ -269,24 +269,24 @@ class DataModel:
         flip_bitangent_sign = self.flip_bitangent_sign if not mirror_mesh else not self.flip_bitangent_sign
 
         if not fetch_loop_data:
-            if collection != context.scene.wwmi_tools_settings.vertex_ids_cached_collection:
+            if collection != context.scene.efmi_tools_settings.vertex_ids_cached_collection:
                 # Cache contains data for different object and must be cleared
-                context.scene.wwmi_tools_settings.vertex_ids_cache = ''
+                context.scene.efmi_tools_settings.vertex_ids_cache = ''
                 fetch_loop_data = True
                 cache_vertex_ids = True
             else:
                 # Partial export is enabled
-                if context.scene.wwmi_tools_settings.vertex_ids_cache:
+                if context.scene.efmi_tools_settings.vertex_ids_cache:
                     # Valid vertex ids cache exists, lets load it
-                    vertex_ids_cache = numpy.array(json.loads(context.scene.wwmi_tools_settings.vertex_ids_cache))
+                    vertex_ids_cache = numpy.array(json.loads(context.scene.efmi_tools_settings.vertex_ids_cache))
                 else:
                     # Cache is clear, we'll have to fetch loop data once 
                     fetch_loop_data = True
                     cache_vertex_ids = True
-        elif context.scene.wwmi_tools_settings.vertex_ids_cache:
+        elif context.scene.efmi_tools_settings.vertex_ids_cache:
             # We're going to fetch loop data, cache must be cleared
-            context.scene.wwmi_tools_settings.vertex_ids_cache = ''
-            context.scene.wwmi_tools_settings.index_data_cache = ''
+            context.scene.efmi_tools_settings.vertex_ids_cache = ''
+            context.scene.efmi_tools_settings.index_data_cache = ''
 
         # Copy default converters
         semantic_converters, format_converters = {}, {}
@@ -326,10 +326,10 @@ class DataModel:
         if cache_vertex_ids:
             # As vertex_ids_cache is None, get_data fetched loop data for us and we can cache vertex ids
             vertex_ids = vertex_buffer.get_field(AbstractSemantic(Semantic.VertexId).get_name())
-            context.scene.wwmi_tools_settings.vertex_ids_cache = json.dumps(vertex_ids.tolist())
+            context.scene.efmi_tools_settings.vertex_ids_cache = json.dumps(vertex_ids.tolist())
             if cache_index_data:
-                context.scene.wwmi_tools_settings.index_data_cache = json.dumps(index_buffer.tolist())
-            context.scene.wwmi_tools_settings.vertex_ids_cached_collection = collection
+                context.scene.efmi_tools_settings.index_data_cache = json.dumps(index_buffer.tolist())
+            context.scene.efmi_tools_settings.vertex_ids_cached_collection = collection
 
         return index_buffer, vertex_buffer
 
