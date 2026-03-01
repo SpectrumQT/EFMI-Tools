@@ -8,6 +8,7 @@ from ...exceptions import clear_error, ConfigError
 from ....migoto_io.blender_tools.vertex_groups import *
 from ....migoto_io.blender_tools.modifiers import *
 from ....migoto_io.blender_tools.meshes import *
+from ....blender_export.blender_export import ObjectMergerEFMI
 
 
 class EFMI_MergeVertexGroups(bpy.types.Operator):
@@ -217,6 +218,22 @@ class EFMI_ConvertVertexColors(bpy.types.Operator):
     def execute(self, context):
         try:
             convert_vertex_colors_storage_format(context)
+            
+        except ValueError as e:
+            self.report({'ERROR'}, str(e))
+            
+        return {'FINISHED'}
+    
+
+class EFMI_FillMissingMeshData(bpy.types.Operator):
+    bl_idname = "efmi_tools.fill_missing_mesh_data"
+    bl_label = "Fill Missing Mesh Data"
+    bl_description = "Generate missing COLOR (black) and TEXCOORD.xy (empty UV)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        try:
+            ObjectMergerEFMI.fill_missing_data(context.selected_objects)
             
         except ValueError as e:
             self.report({'ERROR'}, str(e))
