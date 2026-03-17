@@ -11,6 +11,10 @@
   <a href="#license">License</a>
 </p>
 
+## Announcements
+
+- As of now, **EFMI Tools** is **incompatible** with the lastest changes to **XXMI DLL**, **EFMI** and **Endfield** data itself. Update will come in few days, in a meantime use old dumps and fix exported mods with **Gustav0**'s [hash fix script](https://gamebanana.com/tools/22185).
+
 ## Disaclaimers
 
 - It is **first public alpha version** of the toolkit that bundles experimental code from early research. Some things may and will not function as expected.
