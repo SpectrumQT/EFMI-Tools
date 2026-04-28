@@ -186,6 +186,34 @@ class ModExporter:
         print(f'Merged object build time: {time.time() - start_time :.3f}s ({self.merged_object.vertex_count} vertices, {self.merged_object.index_count} indices)')
         return object_merger.merged_object
 
+    def build_lod_buffers(self, component_id: int):
+        lod_meshes = self.extracted_object.components[component_id].lods
+        if not lod_meshes:
+            return
+
+        vb2 = self.buffers.get(f'Component{component_id}_VB2', None)
+        if vb2 is None:
+            return
+
+        indices = vb2.get_field(Semantic.Blendindices)
+        vg_count = int(indices.max()) + 1
+
+        for lod_id, lod_mesh in enumerate(lod_meshes):
+            if not lod_mesh.vg_map:
+                continue
+
+            remap = numpy.array([lod_mesh.vg_map.get(str(vg_id), vg_id) for vg_id in range(vg_count)])
+
+            vb2_lod = NumpyBuffer(layout=vb2.layout, size=len(vb2.data))
+
+            vb2_lod.set_field(Semantic.Blendindices, remap[indices])
+
+            weights = vb2.get_field(Semantic.Blendweights)
+            if weights is not None:
+                vb2_lod.set_field(Semantic.Blendweights, weights)
+
+            self.buffers[f'Component{component_id}_VB2_LOD{lod_id+1}'] = vb2_lod
+
     def build_data_buffers(self, merged_object: MergedObject, component_id = -1):
         start_time = time.time()
 
@@ -231,26 +259,7 @@ class ModExporter:
             
             self.buffers.update(buffers)
 
-            lod_meshes = self.extracted_object.components[component_id].lods or []
-            for lod_mesh in lod_meshes:
-                if len(lod_mesh.vg_map) == 0:
-                    continue
-                vb2 = self.buffers.get(f'Component{component_id}_VB2', None)
-                if vb2 is not None:
-                    indices = vb2.get_field(Semantic.Blendindices)
-                    vg_count = int(indices.max()) + 1
-
-                    remap = numpy.array([lod_mesh.vg_map.get(str(vg_id), vg_id) for vg_id in range(vg_count)])
-                    
-                    vb2_lod = NumpyBuffer(layout=vb2.layout, size=len(vb2.data))
-
-                    vb2_lod.set_field(Semantic.Blendindices, remap[indices])
-
-                    weights = vb2.get_field(Semantic.Blendweights)
-                    if weights is not None:
-                        vb2_lod.set_field(Semantic.Blendweights, weights)
-
-                    self.buffers[f'Component{component_id}_VB2_LOD'] = vb2_lod
+            self.build_lod_buffers(component_id)
 
             merged_object.vertex_count = vertex_count
             merged_object.shapekeys.vertex_count = len(self.buffers.get('ShapeKeyVertexId', []))
