@@ -1,21 +1,15 @@
 import time
 import shutil
 
-from typing import List, Dict, Union
-from dataclasses import dataclass, field
-
 from ..addon.exceptions import ConfigError
 
 from ..migoto_io.blender_interface.utility import *
-from ..migoto_io.blender_interface.collections import *
-from ..migoto_io.blender_interface.objects import *
-from ..migoto_io.blender_interface.mesh import *
 from ..migoto_io.blender_tools.meshes import *
-from ..migoto_io.data_model.dxgi_format import DXGIFormat
-from ..migoto_io.data_model.byte_buffer import NumpyBuffer, MigotoFmt, BufferLayout, BufferSemantic, Semantic, AbstractSemantic
+from ..migoto_io.data_model.byte_buffer import NumpyBuffer, BufferLayout, BufferSemantic, Semantic
 from ..migoto_io.data_model.data_model import DataModel
+from ..migoto_io.migoto_model.migoto_format import MigotoFmt
 
-from ..extract_frame_data.metadata_format import read_metadata, ExtractedObject
+from ..migoto_io.object_extractor.migoto_object.metadata_format import read_metadata, ExtractedObject
 
 from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeys
 from .metadata_collector import Version, ModInfo
@@ -115,9 +109,6 @@ class ModExporter:
         user_context = get_user_context(self.context)
 
         for component_id, component in enumerate(self.extracted_object.components):
-            index_count = 0
-            vertex_count = 0
-            shapekeys_vertex_count = 0
 
             if component.lods is None:
                 component.lods = []
@@ -140,16 +131,12 @@ class ModExporter:
                     remove_mesh(merged_object.object.data)
                 set_user_context(self.context, user_context)
 
-            index_count += merged_object.index_count
-            vertex_count += merged_object.vertex_count
-            # shapekeys_vertex_count += merged_object.shapekeys.vertex_count
-
-        self.merged_object.index_count = index_count
-        self.merged_object.vertex_count = vertex_count
-        # self.merged_object.shapekeys.vertex_count = shapekeys_vertex_count
+            self.merged_object.index_count += merged_object.index_count
+            self.merged_object.vertex_count += merged_object.vertex_count
+            # self.merged_object.shapekeys.vertex_count += merged_object.shapekeys.vertex_count
 
         if not self.cfg.partial_export:
-            self.textures = get_textures(self.object_source_folder, ['af26db30', '1320a071', '10d7937d', '87505b2b'] if self.cfg.skip_known_cubemap_textures else [])
+            self.textures = get_textures(self.object_source_folder, [])
 
             if self.cfg.write_ini:
                 try:
