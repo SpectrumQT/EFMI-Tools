@@ -198,17 +198,44 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         layout.row().prop(cfg, 'extract_output_folder')
 
         layout.row()
+        
+        layout.row().prop(cfg, 'import_extracted_objects')
+        layout.row().prop(cfg, 'tolerate_extraction_errors')
+        layout.row().prop(cfg, 'verbose_logging')
 
-        col = layout.column(align=True)
-        grid = col.grid_flow(columns=2, align=True)
-        grid.alignment = 'LEFT'
-        grid.prop(cfg, 'skip_small_textures')
-        if cfg.skip_small_textures:
-            grid.prop(cfg, 'skip_small_textures_size')
+        layout.row()
+
+        layout.row().prop(cfg, 'skip_static_objects')
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_object_min_component_count_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_object_min_component_count_enabled
+        sub.prop(cfg, "skip_object_min_component_count")
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_object_min_texture_count_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_object_min_texture_count_enabled
+        sub.prop(cfg, "skip_object_min_texture_count")
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_object_resource_hashes_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_object_resource_hashes_enabled
+        sub.prop(cfg, "skip_object_resource_hashes")
+
+        layout.row()
+            
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_small_textures",)
+        sub = row.row()
+        sub.enabled = cfg.skip_small_textures
+        sub.prop(cfg, "skip_small_textures_size")
 
         layout.row().prop(cfg, 'skip_jpg_textures')
-        layout.row().prop(cfg, 'skip_known_cubemap_textures')
-        layout.row().prop(cfg, 'skip_same_slot_hash_textures')
+        # layout.row().prop(cfg, 'skip_known_cubemap_textures')
+        # layout.row().prop(cfg, 'skip_same_slot_hash_textures')
 
         layout.row()
 
@@ -227,11 +254,40 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         row.prop(cfg, 'object_source_folder')
 
         layout.row()
+        
+        layout.row().prop(cfg, 'tolerate_extraction_errors')
+        layout.row().prop(cfg, 'verbose_logging')
+
+        layout.row()
+
+        layout.row().prop(cfg, 'skip_static_objects')
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_object_min_component_count_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_object_min_component_count_enabled
+        sub.prop(cfg, "skip_object_min_component_count")
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_object_min_texture_count_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_object_min_texture_count_enabled
+        sub.prop(cfg, "skip_object_min_texture_count")
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_object_resource_hashes_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_object_resource_hashes_enabled
+        sub.prop(cfg, "skip_object_resource_hashes")
+
+        layout.row()
+
+        row = add_row_with_error_handler(layout, cfg, 'geo_matcher_error_threshold')
 
         if cfg.geo_matcher_method == 'VOXEL':
-            layout.row().prop(cfg, 'geo_matcher_voxel_error_threshold')
+            row.prop(cfg, 'geo_matcher_voxel_error_threshold')
         elif cfg.geo_matcher_method == 'POINT_CLOUD':
-            layout.row().prop(cfg, 'geo_matcher_error_threshold')
+            row.prop(cfg, 'geo_matcher_error_threshold')
 
         layout.row()
 
@@ -253,6 +309,9 @@ class EFMI_TOOLS_PT_SidePanelAdvancedLodsExtraction(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         cfg = context.scene.efmi_tools_settings
+
+        row = add_row_with_error_handler(layout, cfg, 'allow_lod_overwrite')
+        row.prop(cfg, 'allow_lod_overwrite')
 
         layout.row().prop(cfg, 'import_matched_lod_objects')
         layout.row().prop(cfg, 'skip_lods_below_error_threshold')
@@ -555,18 +614,18 @@ class EFMI_ExtractFrameData(bpy.types.Operator):
 
             clear_error(cfg)
 
-            output = extract_frame_data(cfg)
+            output = extract_frame_data(context, cfg)
             
-            objects_missing_shapekeys = []
-            for object_hash, object_data in output.objects.items():
-                if object_data.shapekeys.offsets_hash and not object_data.shapekeys.shapekey_offsets:
-                    objects_missing_shapekeys.append(object_hash)
-            if len(objects_missing_shapekeys) > 0:
-                self.report({'WARNING'}, dedent(f"""
-                    Objects {', '.join(objects_missing_shapekeys)} were skipped:
-                    Frame dump is missing shapekeys data!
-                    Try to make another dump with ongoing facial animation.
-                """).strip())
+            # objects_missing_shapekeys = []
+            # for object_hash, object_data in output.objects.items():
+            #     if object_data.shapekeys.offsets_hash and not object_data.shapekeys.shapekey_offsets:
+            #         objects_missing_shapekeys.append(object_hash)
+            # if len(objects_missing_shapekeys) > 0:
+            #     self.report({'WARNING'}, dedent(f"""
+            #         Objects {', '.join(objects_missing_shapekeys)} were skipped:
+            #         Frame dump is missing shapekeys data!
+            #         Try to make another dump with ongoing facial animation.
+            #     """).strip())
             
         except ConfigError as e:
             self.report({'ERROR'}, str(e))
@@ -588,7 +647,7 @@ class EFMI_ImportLODData(bpy.types.Operator):
 
             clear_error(cfg)
 
-            output = extract_frame_data(cfg, extract_lods=True)
+            output = extract_frame_data(context, cfg, extract_lods=True)
             
             # objects_missing_shapekeys = []
             # for object_hash, object_data in output.objects.items():

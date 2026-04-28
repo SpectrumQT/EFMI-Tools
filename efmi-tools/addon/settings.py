@@ -69,6 +69,73 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         update=lambda self, context: self.on_update_clear_error('frame_dump_folder'),
     ) # type: ignore
 
+    extract_output_folder: StringProperty(
+        name="Output Folder",
+        description="Extracted EFMI objects export directory",
+        default='',
+        subtype="DIR_PATH",
+    ) # type: ignore
+
+    import_extracted_objects: BoolProperty(
+        name="Import Extracted Objects In Blender",
+        description="Automatically import extracted objects in Blender. Useful to quickly browse open world dumps",
+        default=False,
+    ) # type: ignore
+
+    tolerate_extraction_errors: BoolProperty(
+        name="Tolerate Extraction Errors",
+        description="Continue extraction on error (errored objects will be skipped)",
+        default=True,
+    ) # type: ignore
+
+    verbose_logging: BoolProperty(
+        name="Verbose Logging",
+        description="Print less significant debug messages to console",
+        default=False,
+    ) # type: ignore
+
+    skip_static_objects: BoolProperty(
+        name="Objects Filtering: Skip Static",
+        description="Skip extracting objects without weights (e.g. trees, rocks, etc)",
+        default=True,
+    ) # type: ignore
+
+    skip_object_min_component_count_enabled: BoolProperty(
+        name="Objects Filtering: Minimal Component Count",
+        description="Skip extracting objects with less components than specified",
+        default=False,
+    ) # type: ignore
+
+    skip_object_min_component_count: IntProperty(
+        name="Min Component Count",
+        description="Skip extracting objects with less components than specified",
+        default=0,
+    ) # type: ignore
+
+    skip_object_min_texture_count_enabled: BoolProperty(
+        name="Objects Filtering: Minimal Textures Count",
+        description="Skip extracting objects with less textures than specified",
+        default=False,
+    ) # type: ignore
+
+    skip_object_min_texture_count: IntProperty(
+        name="Min Texture Count",
+        description="Skip extracting objects with less textures than specified",
+        default=0,
+    ) # type: ignore
+
+    skip_object_resource_hashes_enabled: BoolProperty(
+        name="Objects Filtering: Lookup Resource Hashes",
+        description="Skip extracting objects without at least 1 of specified resource hashes (IB/VB/texture etc)",
+        default=False,
+    ) # type: ignore
+
+    skip_object_resource_hashes: StringProperty(
+        name="",
+        description="Skip extracting objects without at least 1 of specified resource hashes (IB/VB/texture etc)",
+        default="",
+    ) # type: ignore
+
     skip_small_textures: BoolProperty(
         name="Textures Filtering: Skip Small",
         description="Skip texture smaller than specified size",
@@ -99,12 +166,6 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=True,
     ) # type: ignore
 
-    extract_output_folder: StringProperty(
-        name="Output Folder",
-        description="Extracted EFMI objects export directory",
-        default='',
-        subtype="DIR_PATH",
-    ) # type: ignore
 
     ########################################
     # Object Import
@@ -150,9 +211,16 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=False,
     ) # type: ignore
 
+
     ########################################
     # LOD Import
     ########################################
+
+    allow_lod_overwrite: BoolProperty(
+        name="Allow LoD Data Overwrite",
+        description="Allow replacement of existing component LoD data in Metadata.json on LoD object name or vertex count collision",
+        default=False,
+    ) # type: ignore
 
     geo_matcher_method: bpy.props.EnumProperty(
         name="Method",
