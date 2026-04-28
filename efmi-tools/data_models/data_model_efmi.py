@@ -4,17 +4,13 @@ import numpy
 import bpy
 import json
 
-
-from typing import Tuple, List, Dict, Optional
-
-
 from ..migoto_io.data_model.dxgi_format import DXGIFormat, DXGIType
-from ..migoto_io.data_model.byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout, NumpyBuffer, MigotoFmt
+from ..migoto_io.data_model.byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout, NumpyBuffer
 from ..migoto_io.data_model.data_model import DataModel
 
 
 class DataModelEFMI(DataModel):
-    buffers_format: Dict[str, BufferLayout] = {
+    buffers_format: dict[str, BufferLayout] = {
         'Index': BufferLayout([
             BufferSemantic(AbstractSemantic(Semantic.Index), DXGIFormat.R16_UINT, stride=6),
         ]),
@@ -60,10 +56,10 @@ class DataModelEFMI(DataModel):
         mesh: bpy.types.Mesh, 
         index_buffer: NumpyBuffer,
         vertex_buffer: NumpyBuffer,
-        vg_remap: Optional[numpy.ndarray],
+        vg_remap: numpy.ndarray | None,
         mirror_mesh: bool = False,
         mesh_scale: float = 1.0,
-        mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+        mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
         import_tangent_data_to_attribute: bool = False
     ):
         # Set import_format for NORMAL0 to prevent automatic addition of default format converter (one that would reshape array from 1 to 1,3)
@@ -108,13 +104,13 @@ class DataModelEFMI(DataModel):
             context: bpy.types.Context, 
             collection: bpy.types.Collection, 
             obj: bpy.types.Object, 
-            excluded_buffers: List[str],
-            buffers_format: Optional[Dict[str, BufferLayout]] = None,
+            excluded_buffers: list[str],
+            buffers_format: dict[str, BufferLayout] | None = None,
             mirror_mesh: bool = False,
             mesh_scale: float = 1.0,
-            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
-            object_index_layout: Optional[List[int]] = None
-        ) -> Tuple[Dict[str, NumpyBuffer], int, Optional[List[int]]]:
+            mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+            object_index_layout: list[int] | None = None
+        ) -> tuple[dict[str, NumpyBuffer], int]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
@@ -387,12 +383,14 @@ class DataModelEFMI(DataModel):
 
         return encoded
 
-    def build_blend_remap(self, 
-                         context: bpy.types.Context, 
-                         index_layout: List[int], 
-                         index_buffer: NumpyBuffer,
-                         blend_buffer: NumpyBuffer,
-                         vg_buffer: NumpyBuffer) -> Dict[str, NumpyBuffer]:
+    def build_blend_remap(
+        self,
+        context: bpy.types.Context,
+        index_layout: list[int],
+        index_buffer: NumpyBuffer,
+        blend_buffer: NumpyBuffer,
+        vg_buffer: NumpyBuffer,
+    ) -> dict[str, NumpyBuffer]:
         
         start_time = time.time()
 

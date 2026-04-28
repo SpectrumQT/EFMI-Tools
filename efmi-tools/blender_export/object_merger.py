@@ -1,20 +1,16 @@
 import re
-import bpy
 
-from typing import List, Dict, Union
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import Enum
-from textwrap import dedent
 
 from ..addon.exceptions import ConfigError
 
 from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.objects import *
 
-from ..migoto_io.blender_tools.modifiers import apply_modifiers_for_object_with_shape_keys
 from ..migoto_io.blender_tools.vertex_groups import fill_gaps_in_vertex_groups
 
-from ..extract_frame_data.metadata_format import ExtractedObject
+from ..migoto_io.object_extractor.migoto_object.metadata_format import ExtractedObject
 
 
 class SkeletonType(Enum):
@@ -33,7 +29,7 @@ class TempObject:
 
 @dataclass
 class MergedObjectComponent:
-    objects: List[TempObject]
+    objects: list[TempObject]
     id: int = 0
     vertex_count: int = 0
     index_count: int = 0
@@ -54,7 +50,7 @@ class MergedObjectShapeKeys:
 @dataclass
 class MergedObject:
     object: bpy.types.Object
-    components: List[MergedObjectComponent]
+    components: list[MergedObjectComponent]
     shapekeys: MergedObjectShapeKeys
     skeleton_type: SkeletonType
     vertex_count: int = 0

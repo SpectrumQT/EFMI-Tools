@@ -5,9 +5,9 @@ import copy
 import math
 import mathutils
 
-import bpy
+from typing import Callable
 
-from typing import Tuple, List, Dict, Optional, Union
+import bpy
 
 from .dxgi_format import DXGIFormat, DXGIType
 from .byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout, NumpyBuffer
@@ -17,23 +17,22 @@ from .data_importer import BlenderDataImporter
 
 class DataModel:
     flip_winding: bool = False
-    unpack_normal: bool = False
     flip_normal: bool = False
     flip_tangent: bool = False
     flip_bitangent_sign: bool = False
     flip_texcoord_v: bool = False
     legacy_vertex_colors: bool = False
 
-    data_extractor: Optional[BlenderDataExtractor] = None
-    data_importer: Optional[BlenderDataImporter] = None
+    data_extractor: BlenderDataExtractor | None = None
+    data_importer: BlenderDataImporter | None = None
 
-    buffers_format: Dict[str, BufferLayout] = {}
-    semantic_converters: Dict[AbstractSemantic, List[callable]] = {}
-    format_converters: Dict[AbstractSemantic, List[callable]] = {}
-    semantic_encoders: Dict[AbstractSemantic, List[callable]] = {}
-    format_encoders: Dict[AbstractSemantic, List[callable]] = {}
+    buffers_format: dict[str, BufferLayout] = {}
+    semantic_converters: dict[AbstractSemantic, list[Callable]] = {}
+    format_converters: dict[AbstractSemantic, list[Callable]] = {}
+    semantic_encoders: dict[AbstractSemantic, list[Callable]] = {}
+    format_encoders: dict[AbstractSemantic, list[Callable]] = {}
 
-    blender_data_formats: Dict[Semantic, DXGIFormat] = {
+    blender_data_formats: dict[Semantic, DXGIFormat] = {
         Semantic.Index: DXGIFormat.R32_UINT,
         Semantic.VertexId: DXGIFormat.R32_UINT,
         Semantic.Normal: DXGIFormat.R16G16B16_FLOAT,
@@ -50,16 +49,16 @@ class DataModel:
     }
 
     def set_data(
-            self, 
-            obj: bpy.types.Mesh, 
-            mesh: bpy.types.Mesh, 
-            index_buffer: NumpyBuffer,
-            vertex_buffer: NumpyBuffer,
-            vg_remap: Optional[numpy.ndarray],
-            mirror_mesh: bool = False,
-            mesh_scale: float = 1.0,
-            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0)
-        ):
+        self,
+        obj: bpy.types.Mesh,
+        mesh: bpy.types.Mesh,
+        index_buffer: NumpyBuffer,
+        vertex_buffer: NumpyBuffer,
+        vg_remap: numpy.ndarray | None,
+        mirror_mesh: bool = False,
+        mesh_scale: float = 1.0,
+        mesh_rotation: tuple[float] = (0.0, 0.0, 0.0)
+    ):
 
         if self.data_importer is None:
             self.data_importer = BlenderDataImporter()
@@ -117,17 +116,17 @@ class DataModel:
         data_importer.set_data(obj, mesh, index_buffer, vertex_buffer, semantic_converters, format_converters, self.legacy_vertex_colors)
 
     def get_data(
-            self, 
-            context: bpy.types.Context, 
-            collection: bpy.types.Collection, 
-            obj: bpy.types.Object,
-            excluded_buffers: List[str], 
-            buffers_format: Optional[Dict[str, BufferLayout]] = None,
-            mirror_mesh: bool = False,
-            mesh_scale: float = 1.0,
-            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
-            object_index_layout: Optional[List[int]] = None
-        ) -> Tuple[Dict[str, NumpyBuffer], int, Optional[List[int]]]:
+        self,
+        context: bpy.types.Context,
+        collection: bpy.types.Collection,
+        obj: bpy.types.Object,
+        excluded_buffers: list[str],
+        buffers_format: dict[str, BufferLayout] | None = None,
+        mirror_mesh: bool = False,
+        mesh_scale: float = 1.0,
+        mesh_rotation: tuple[float] = (0.0, 0.0, 0.0),
+        object_index_layout: list[int] | None = None
+    ) -> tuple[dict[str, NumpyBuffer], int]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
@@ -148,13 +147,13 @@ class DataModel:
         return buffers, len(vertex_buffer)
 
     def build_buffers(
-            self,
-            index_data: numpy.ndarray, 
-            vertex_buffer: NumpyBuffer, 
-            excluded_buffers: List[str],
-            buffers_format: Dict[str, BufferLayout],
-            extend_ib_width: bool = True,
-        ) -> Dict[str, NumpyBuffer]:
+        self,
+        index_data: numpy.ndarray,
+        vertex_buffer: NumpyBuffer,
+        excluded_buffers: list[str],
+        buffers_format: dict[str, BufferLayout],
+        extend_ib_width: bool = True,
+    ) -> dict[str, NumpyBuffer]:
         
         start_time = time.time()
 
@@ -199,11 +198,11 @@ class DataModel:
             context: bpy.types.Context, 
             collection: bpy.types.Collection, 
             mesh: bpy.types.Mesh, 
-            excluded_buffers: List[str], 
-            buffers_format: Dict[str, BufferLayout],
+            excluded_buffers: list[str], 
+            buffers_format: dict[str, BufferLayout],
             mirror_mesh: bool = False,
             mesh_scale: float = 1.0,
-            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+            mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
             cache_index_data: bool = False
         ):
 
@@ -223,9 +222,11 @@ class DataModel:
         )
         return index_data, vertex_buffer
 
-    def make_export_layout(self, 
-                           buffers_format: Dict[str, BufferLayout],
-                           excluded_buffers: List[str]):
+    def make_export_layout(
+            self, 
+            buffers_format: dict[str, BufferLayout],
+            excluded_buffers: list[str]
+        ):
         fetch_loop_data = False
 
         if len(excluded_buffers) == 0:
@@ -259,7 +260,7 @@ class DataModel:
             fetch_loop_data: bool, 
             mirror_mesh: bool = False,
             mesh_scale: float = 1.0,
-            mesh_rotation: Tuple[float] = (0.0, 0.0, 0.0),
+            mesh_rotation: tuple[float] = (0.0, 0.0, 0.0),
             cache_index_data: bool = False,
         ):
         
@@ -343,7 +344,7 @@ class DataModel:
         return data
     
     @staticmethod
-    def converter_rotate_vector(data: numpy.ndarray, rotation: Tuple[float]) -> numpy.ndarray:
+    def converter_rotate_vector(data: numpy.ndarray, rotation: tuple[float]) -> numpy.ndarray:
         rotation_matrix = mathutils.Euler(tuple(map(math.radians, rotation)), 'XYZ').to_matrix().to_4x4()
         rotation_matrix_array = numpy.array(rotation_matrix)[:3, :3]
         data = data @ rotation_matrix_array.T
@@ -371,7 +372,7 @@ class DataModel:
         return data
     
     @staticmethod
-    def converter_resize_second_dim(data: numpy.ndarray, width: int, fill: Union[int, float] = 0) -> numpy.ndarray:
+    def converter_resize_second_dim(data: numpy.ndarray, width: int, fill: int | float = 0) -> numpy.ndarray:
         """
         Restructures 2-dim numpy array's 2-nd dimension to given width by padding or dropping values
         Automatically converts 1-dim array to 2-dim with given width (every element is getting padded to width)
@@ -687,7 +688,7 @@ class DataModel:
         return normalized_weights_integer.astype(numpy.uint8)
 
     @staticmethod
-    def _create_verterx_attribute(attr_name, object_name, vertex_data: numpy.ndarray, vertex_ids: Optional[numpy.ndarray] = None):
+    def _create_verterx_attribute(attr_name, object_name, vertex_data: numpy.ndarray, vertex_ids: numpy.ndarray | None = None):
         """
         DEBUG: Creates float colors vertex attribute with provided data
         """
