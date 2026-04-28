@@ -1,34 +1,34 @@
 import hashlib
 import os
 import time
-import bpy
+import traceback
+import re
+import sys
 
-from typing import List, Dict, Union, Optional, Tuple
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import field
 from threading import Thread
 from datetime import datetime
+from textwrap import dedent
 
 from ..addon.settings import EFMI_Settings
 from ..migoto_io.blender_interface.utility import *
-from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.objects import *
 from ..migoto_io.blender_interface.mesh import *
 
 from ..migoto_io.data_model.byte_buffer import NumpyBuffer
 
-from ..extract_frame_data.metadata_format import ExtractedObject
+from ..migoto_io.object_extractor.migoto_object.metadata_format import ExtractedObject
 
-from .object_merger import MergedObject, SkeletonType
-from .metadata_collector import Version, ModInfo
+from .object_merger import MergedObject
+from .metadata_collector import ModInfo
 from .texture_collector import Texture
 from .text_formatter import TextFormatter
 
 from ..libs.jinja2 import Environment, FileSystemLoader, TemplateSyntaxError, UndefinedError
 
 
-chached_template: Optional[Environment] = None
-chached_template_string: Optional[str] = None
+chached_template: Environment | None = None
+chached_template_string: str | None = None
 
 
 @dataclass
@@ -39,8 +39,8 @@ class IniMaker:
     mod_info: ModInfo
     extracted_object: ExtractedObject
     merged_object: MergedObject
-    buffers: Dict[str, NumpyBuffer]
-    textures: List[Texture]
+    buffers: dict[str, NumpyBuffer]
+    textures: list[Texture]
     comment_code: bool
     unrestricted_custom_shape_keys: bool
     skeleton_scale: float
@@ -143,6 +143,19 @@ class IniMaker:
         if template_string is None or not(template_string.strip()):
             template_string = self.get_default_template(context, cfg, remove_code_comments=not cfg.comment_ini)
 
+        def get_template_fragment(error_line_id: int) -> str:
+            template_lines = template_string.split("\n")
+
+            start_line = max(0, error_line_id - 4)
+            end_line = min(len(template_lines), error_line_id + 2)
+            
+            template_fragment = ""
+            for i in range(start_line, end_line):
+                line_pointer = ">> " if (i + 1) == error_line_id else "|  "
+                template_fragment += f"{line_pointer}{i + 1}: {template_lines[i]}\n"
+
+            return template_fragment
+
         global chached_template, chached_template_string
         if chached_template_string is not None and template_string == chached_template_string:
             template = chached_template
@@ -165,27 +178,47 @@ class IniMaker:
                 chached_template_string = template_string
 
             except TemplateSyntaxError as e:
-                template_lines = template_string.split('\n')
-                template_fragment = ''
-                start_line = max(0, e.lineno - 4)
-                end_line = min(len(template_lines), e.lineno + 2)
-                
-                for i in range(start_line, end_line):
-                    template_fragment += f'{i+1}: {template_lines[i]}\n'
-                    
-                raise ValueError(f'Ini Template syntax error:\n\n'
-                                 f'{e.message}\n\n'
-                                 f'Line Number: {e.lineno} (actual cause may be located above this line)\n\n'
-                                 f'Template Fragment:\n'
-                                 f'{template_fragment}')
+                raise ValueError(
+                    dedent(f"""
+                        Ini Template syntax error:
+                        
+                        {e.message}
+
+                        Line Number: {e.lineno} (actual cause may be located above this line)
+
+                        Template Fragment:
+                    """) + get_template_fragment(e.lineno)
+                )
             
             print(f'Ini template caching time: {time.time() - start_time :.3f}s')
 
         try:
             rendered_string = template.render({**vars(self), 'enumerate': enumerate})
-        except UndefinedError as e:
-                raise ValueError(f'Ini Template filling error:\n'
-                                 f'{e}')
+        except Exception as e:
+            tb = traceback.format_exc()
+            match = re.search(r'File "<template>", line (\d+)', tb)
+
+            if match:
+                lineno = int(match.group(1))
+
+                raise ValueError(
+                    dedent(f"""
+                        Ini Template filling error:
+                        
+                        {str(sys.exc_info()[1])}
+
+                        Line Number: {lineno} (actual cause may be located above this line)
+
+                        Template Fragment:
+                    """) + get_template_fragment(lineno)
+                )
+            
+            else:
+                raise ValueError(dedent(f"""
+                    Ini Template runtime error:
+                    
+                    {tb}
+                """))
 
         result = ''.join([line + '\n' for line in rendered_string.split('\n') if not line.strip().startswith(';DEL')])
 
