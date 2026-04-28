@@ -1,4 +1,4 @@
-; EFMI ALPHA-5 INI
+; EFMI ALPHA-6 INI
 
 {%- macro note(text) %}{% if comment_code %}; {{ text }}{% else %};DEL{% endif %}{% endmacro %}
 
@@ -90,7 +90,7 @@ global $mod_enabled = 0
 {{note("Indicates if our object was detected in previous frame")}}
 global $object_detected = 0
 {{note("Indicates if our object has LoDs applied")}}
-global $lod_detected = 0
+global $lod_level = 0
 {%- if cfg.use_ini_toggles %}
 ; Swap vars aka state values for toggles (marked as `persist` to keep state saved in `d3dx_user.ini`)
 {%- for var in cfg.ini_toggles.vars %}
@@ -154,32 +154,37 @@ endif
 
 ; Shading: Custom Mesh Draw CommandLists -------------------------
 
-{%- for componnet_id, component in enumerate(extracted_object.components) if merged_object.components[componnet_id].objects | length > 0%}
+{%- for component_id, component in enumerate(extracted_object.components) if merged_object.components[component_id].objects | length > 0 %}
 
 {{note("Do custom draw calls for Component %d" | format(loop.index0))}}
-[CommandList_Draw_Component{{ componnet_id }}]
+[CommandList_Draw_Component{{ component_id }}]
 {{note("Trigger TextureOverride sections for PS slots from 0 to 20 with matching `hash` values")}}
 {{note("If hash of resource in slot matches TextureOverride hash, TextureOverride puts defined custom texture Resource in `this` slot")}}
 run = CommandList\EFMIv1\OverrideTextures
 {{note("Do by-slot resource overrides")}}
-ib = ref Resource_Component{{ componnet_id }}_IB
-vb0 = ref Resource_Component{{ componnet_id }}_VB0
-vb1 = ref Resource_Component{{ componnet_id }}_VB1
-{%- if 'Component'~componnet_id~'_VB2' in buffers.keys() %}
-{{note("Conditional VB2 (blends buffer) swap for LoDs handling")}}
-{%- if component.lods | length == 0 or component.lods[0].vg_map | length == 0 %}
-vb2 = ref Resource_Component{{ componnet_id }}_VB2
-{%- else %}
-if $lod_detected == 0
+ib = ref Resource_Component{{ component_id }}_IB
+vb0 = ref Resource_Component{{ component_id }}_VB0
+vb1 = ref Resource_Component{{ component_id }}_VB1
+{{note("Conditional VB2 (blends buffer) swap (with multiple LoD levels support)")}}
+{%- if 'Component'~component_id~'_VB2' in buffers.keys() %}
+if $lod_level == 0
     {{note("Use VB2 with weights for full model")}}
-    vb2 = ref Resource_Component{{ componnet_id }}_VB2
-else
-    {{note("Use VB2 with weights for LoD model")}}
-    vb2 = ref Resource_Component{{ componnet_id }}_VB2_LOD
+    vb2 = ref Resource_Component{{ component_id }}_VB2
+{%- for lod_id, lod in enumerate(component.lods) %}
+elif $lod_level == {{ lod_id + 1 }}
+    {%- if not lod.vg_map %}
+    {{note("Use VB2 with full model weights (LoD mesh uses full skeleton)")}}
+    vb2 = ref Resource_Component{{ component_id }}_VB2
+    {%- else %}
+    {{note("Use VB2 with remapped weights (LoD mesh uses simplified skeleton)")}}
+    vb2 = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}
+    {%- endif %}
+{%- endfor %}
 endif
 {%- endif %}
-{%- endif %}
-{%- for obj in merged_object.components[componnet_id].objects %}
+{{note("Some shaders (e.g. wetness) are being supplied with differently mapped VB0 copy")}}
+vb3 = ref Resource_Component{{ component_id }}_VB0
+{%- for obj in merged_object.components[component_id].objects %}
 ; Draw {{ obj.name }}
 {%- if cfg.use_ini_toggles %}
 if {{ formatter.format_ini_drawvar(obj.name) }}
@@ -194,27 +199,28 @@ drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offse
 
 ; Shading: Full Models Draw Call Stacks Processing -------------------------
 
-{%- for componnet_id, component in enumerate(extracted_object.components) %}
+{%- for component_id, component in enumerate(extracted_object.components) %}
 
 {{note("Override draw calls for Component %d" | format(loop.index0))}}
-[TextureOverride_Component{{ componnet_id }}]
-hash = {{ component.vb0_hash }}
+[TextureOverride_Component{{ component_id }}]
+hash = {{ component.ib_hash }}
+match_index_count = {{ component.index_count }}
 {{note("Signal our mod that object is found on screen and we can start overriding it")}}
 $object_detected = 1
 
 {{note("Signal our mod that object LoD is NOT found on screen (only components with LoDs should do it)")}}
-{%- if component.lods | length > 0 and component.lods[0].vb0_hash != component.vb0_hash %}
-$lod_detected = 0
+{%- if component.lods | length > 0 and component.lods[0].ib_hash != component.ib_hash %}
+$lod_level = 0
 {%- endif %}
 if $mod_enabled && DRAW_TYPE == 4
     {{note("Skip original draw call")}}
     handling = skip
-    {%- if merged_object.components[componnet_id].objects | length > 0 %}
+    {%- if merged_object.components[component_id].objects | length > 0 %}
     {{note("Do custom draw calls")}}
-    run = CommandList_Draw_Component{{ componnet_id }}
+    run = CommandList_Draw_Component{{ component_id }}
     {%- else %}
     ; Draw skipped: No matching custom components found
-    ; run = CommandList_Draw_Component{{ componnet_id }}
+    ; run = CommandList_Draw_Component{{ component_id }}
     {%- endif %}
 endif
 
@@ -222,26 +228,27 @@ endif
 
 ; Shading: LoD Models Draw Call Stacks Processing -------------------------
 
-{%- for componnet_id, component in enumerate(extracted_object.components) %}
+{%- for component_id, component in enumerate(extracted_object.components) %}
 
-{%- for lod_id, lod in enumerate(component.lods) if lod.vb0_hash != component.vb0_hash %}
+{%- for lod_id, lod in enumerate(component.lods) if lod.ib_hash != component.ib_hash %}
 
 {{note("Override draw calls for LoD of Component %d" | format(loop.index0))}}
-[TextureOverride_Component{{ componnet_id }}_LOD{{ lod_id }}]
-hash = {{ lod.vb0_hash }}
+[TextureOverride_Component{{ component_id }}_LOD{{ lod_id + 1 }}]
+hash = {{ lod.ib_hash }}
+match_index_count = {{ lod.index_count }}
 {{note("Signal our mod that object is found on screen and we can start overriding it")}}
 $object_detected = 1
 {{note("Signal our mod that object LoD is found on screen and we can start overriding it")}}
-$lod_detected = 1
+$lod_level = {{ lod_id + 1 }}
 if $mod_enabled && DRAW_TYPE == 4
 {{note("Skip original draw call")}}
     handling = skip
-    {%- if merged_object.components[componnet_id].objects | length > 0 %}
+    {%- if merged_object.components[component_id].objects | length > 0 %}
     {{note("Do custom draw calls")}}
-    run = CommandList_Draw_Component{{ componnet_id }}
+    run = CommandList_Draw_Component{{ component_id }}
     {%- else %}
     ; Draw skipped: No matching custom components found
-    ; run = CommandList_Draw_Component{{ componnet_id }}
+    ; run = CommandList_Draw_Component{{ component_id }}
     {%- endif %}
 endif
 
