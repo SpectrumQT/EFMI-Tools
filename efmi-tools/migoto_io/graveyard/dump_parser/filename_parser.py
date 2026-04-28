@@ -9,7 +9,8 @@ from typing import Optional, Union, List, Dict, Set
 from textwrap import dedent
 from pathlib import Path
 
-from ..data_model.byte_buffer import ByteBuffer, BufferLayout, IndexBuffer, MigotoFormat, NumpyBuffer
+from ..data_model.byte_buffer import ByteBuffer, BufferLayout, IndexBuffer, NumpyBuffer
+from ..migoto_model.migoto_format import MigotoFormat
 
 from .dict_filter import DictFilter, FilterCondition, Filter
 

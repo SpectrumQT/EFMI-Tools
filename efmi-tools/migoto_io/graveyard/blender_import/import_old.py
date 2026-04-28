@@ -11,7 +11,7 @@ from ..migoto_io.blender_interface.utility import *
 from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.objects import *
 
-from ..extract_frame_data.metadata_format import read_metadata
+from ..migoto_io.data_extractor.migoto_object.metadata_format import read_metadata
 
 from .buffers import VertexBuffer, IndexBuffer
 

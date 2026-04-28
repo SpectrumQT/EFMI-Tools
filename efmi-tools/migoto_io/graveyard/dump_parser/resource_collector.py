@@ -3,7 +3,8 @@ import time
 from typing import Union, List, Dict, Optional
 from dataclasses import dataclass
 
-from ..data_model.byte_buffer import ByteBuffer, BufferLayout, IndexBuffer, MigotoFormat, NumpyBuffer
+from ..data_model.byte_buffer import ByteBuffer, BufferLayout, IndexBuffer,  NumpyBuffer
+from ..migoto_model.migoto_format import MigotoFormat
 
 from .filename_parser import SlotType, ShaderType, SlotId, ResourceDescriptor, WrappedResource, ResourceConflict
 

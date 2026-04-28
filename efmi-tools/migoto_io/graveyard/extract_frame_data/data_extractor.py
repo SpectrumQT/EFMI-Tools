@@ -6,11 +6,12 @@ from enum import Enum
 from pathlib import Path
 
 from ..migoto_io.data_model.dxgi_format import DXGIFormat
-from ..migoto_io.data_model.byte_buffer import ByteBuffer, IndexBuffer, BufferLayout, BufferSemantic, AbstractSemantic, Semantic, NumpyBuffer, MigotoFormat
+from ..migoto_io.data_model.byte_buffer import ByteBuffer, IndexBuffer, BufferLayout, BufferSemantic, AbstractSemantic, Semantic, NumpyBuffer
 from ..migoto_io.dump_parser.log_parser import CallParameters
 from ..migoto_io.dump_parser.filename_parser import ResourceDescriptor, SlotType
 from ..migoto_io.dump_parser.resource_collector import ShaderCallBranch, WrappedResource, ResourceConflict
-
+from ..migoto_io.dump_parser.log_processor import FrameDumpLogProcessor
+from ..migoto_io.migoto_model.migoto_format import MigotoFormat
 
 class PoseConstantBufferFormat(Enum):
     static = 1
@@ -81,26 +82,28 @@ class DataExtractor:
 
         self.object_id = f'{int(time.time())}'
 
+        self.log = FrameDumpLogProcessor(Path(r'C:\Games\XXMI Launcher\Importers\EFMI\EFMI_DEV\FrameAnalysis-2026-03-03-025040')) 
+
         self.semantic_remap = {
             BufferSemantic(
                 AbstractSemantic(Semantic.Normal, 0), format=DXGIFormat.R32_FLOAT, input_slot=0
-                ): BufferSemantic(
-                    AbstractSemantic(Semantic.EncodedData, 0), format=DXGIFormat.R32_UINT, input_slot=0
+            ): BufferSemantic(
+                AbstractSemantic(Semantic.EncodedData, 0), format=DXGIFormat.R32_UINT, input_slot=0
             ),
             BufferSemantic(
                 AbstractSemantic(Semantic.TexCoord, 4), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=1
-                ): BufferSemantic(
-                    AbstractSemantic(Semantic.Color, 0), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=1
+            ): BufferSemantic(
+                AbstractSemantic(Semantic.Color, 0), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=1
             ),
             BufferSemantic(
                 AbstractSemantic(Semantic.TexCoord, 3), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
-                ): BufferSemantic(
-                    AbstractSemantic(Semantic.Color, 2), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
+            ): BufferSemantic(
+                AbstractSemantic(Semantic.Color, 2), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
             ),
             BufferSemantic(
                 AbstractSemantic(Semantic.TexCoord, 4), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
-                ): BufferSemantic(
-                    AbstractSemantic(Semantic.Color, 1), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
+            ): BufferSemantic(
+                AbstractSemantic(Semantic.Color, 1), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
             ),
         }
         self.expected_input_slots = {
@@ -244,16 +247,45 @@ class DataExtractor:
                 ib_layout = ib_format.ib_layout
                 index_semantic_name = AbstractSemantic(Semantic.Index).get_name()
 
+                # Distinguish objects
+                cb0 = branch_call.resources.get('CB0', None)
+                if cb0 is None:
+                    self.info(call_id, 'N/A', f'Skipping call without CB0')
+                    continue
+                
+                call = self.log.calls[int(call_id)]
+                
+                cb0.load_buffer(BufferLayout([
+                    BufferSemantic(AbstractSemantic(Semantic.RawData, 0), DXGIFormat.R32_FLOAT, input_slot=0),
+                ]))
+                
+                first_constant, num_constants = call.resources['vs-cb1'].first_constant, call.resources['vs-cb1'].num_constants
+                
+                data = cb0.buffer.data['RAWDATA']
+
+                fragment = data[first_constant*4:first_constant*4+16]
+
+                cb0_py_hash = hash(tuple(fragment.tolist()))
+                
+                # def format_list(nums):
+                #     dat = [f"{x:.2f}" for x in nums]
+                #     out = []
+                #     for i in range(int(len(nums)/4)):
+                #         out.append(dat[i:i+4])
+                #     return out
+                # print(f'[{call_id}][{vb0_hash}][{first_constant:06d}:{num_constants:03d}]: {format_list(fragment.tolist())}')
+
                 if is_static_object:
                     object_id = f'Static {ib.hash}'
                 else:
+                    self.object_id = f'Character {cb0_py_hash}'
                     object_id = self.object_id
                     vb = branch_call.resources.get('VB2', None)
                     if vb:
                         vb_format = vb.get_format(call_id)
                         vb_layout = vb_format.vb_layout
                         if vb_layout.get_element(AbstractSemantic(Semantic.TexCoord, 3)) or vb_layout.get_element(AbstractSemantic(Semantic.Color, 2)):
-                            object_id = f'Factory {vb0_hash}'
+                            object_id = f'Factory {cb0_py_hash}'
 
                 if is_static_object:
                     # Load unique IB for static object from TXT

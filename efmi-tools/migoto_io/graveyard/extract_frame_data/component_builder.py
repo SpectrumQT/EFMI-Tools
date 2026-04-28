@@ -250,8 +250,9 @@ class ComponentBuilder:
 
         sorted_draw_data = {}
 
-        total_vertex_count = 0
-        total_vertex_count_weapon = 0
+        vertex_counts = {}
+        component_counts = {}
+        min_positions = {}
 
         for (object_id, vb0_hash, vertex_offset, vertex_count), draw_data in self.draw_data.items():
 
@@ -267,24 +268,26 @@ class ComponentBuilder:
 
             min_pos = float(positions.min())
 
-            if not object_id.startswith('Static') and not object_id.startswith('Factory'):
-                if min_pos > -0.02:
-                    total_vertex_count += vertex_count
-                else:
-                    total_vertex_count_weapon += vertex_count
+            vertex_counts[object_id] = vertex_counts.get(object_id, 0) + vertex_count
+            component_counts[object_id] = component_counts.get(object_id, 0) + 1
+
+            if min_positions.get(object_id, 0) > min_pos:
+                min_positions[object_id] = min_pos
 
             sorted_draw_data[float(positions.max())] = (object_id, vb0_hash, vertex_offset, vertex_count, min_pos, draw_data)
 
         sorted_draw_data = dict(sorted(sorted_draw_data.items(), key=lambda x: x[0], reverse=True))
 
         for max_pos, (object_id, vb0_hash, vertex_offset, vertex_count, min_pos, draw_data) in sorted_draw_data.items():
-            
-            if object_id.startswith('Static') or object_id.startswith('Factory'):
-                object_id = object_id
-            elif min_pos < -0.02:
-                object_id = f'Weapon {total_vertex_count_weapon}'
+
+            if object_id.startswith('Static'):
+                object_id = f'Static {vertex_counts[object_id]}'
+            elif object_id.startswith('Factory'):
+                object_id = f'Factory {vertex_counts[object_id]}'
+            elif min_positions.get(object_id, 0) > -0.02 and component_counts[object_id] >= 6:
+                object_id = f'Character {vertex_counts[object_id]}'
             else:
-                object_id = f'Character {total_vertex_count}'
+                object_id = f'Object {vertex_counts[object_id]}'
 
             draw_data.object_id = object_id
 

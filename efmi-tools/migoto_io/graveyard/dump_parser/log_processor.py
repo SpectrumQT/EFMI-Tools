@@ -2,7 +2,7 @@ import os
 import re
 
 from enum import Enum, auto
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 class ShaderType(Enum):
@@ -33,6 +33,7 @@ class SlotType(Enum):
     Texture = 't'
     RenderTarget = 'o'
     UAV = 'u'
+    Unknown = 'none'
 
 
 def SlotId(slot_id):
@@ -119,6 +120,8 @@ class FrameDumpCall:
     def __init__(self, call_id):
         self.id = call_id
         self.parameters = {}
+        self.resources = {}
+        self.input_resources = []
         self.output_resources = []
 
 @dataclass
@@ -134,12 +137,23 @@ class FrameDumpResource:
     pointer: str
     hash: str
     last_set_call_id: int
+    shader_type: ShaderType
+    slot_type: SlotType
+    slot_id: int
+
+
+
+@dataclass
+class FrameDumpConstantBuffer(FrameDumpResource):
+    first_constant: int
+    num_constants: int
+
 
 
 class FrameDumpModel:
     def __init__(self):
         self.call = None
-        self.calls = None
+        self.calls = {}
         self.current_shaders = {
             ShaderType.Compute: None,
             ShaderType.Vertex: None,
@@ -152,7 +166,7 @@ class FrameDumpModel:
             ShaderType.Compute: {
                 SlotType.ConstantBuffer: [None] * 16,
                 SlotType.Texture: [None] * 128,
-                SlotType.UAV: [None] * 8,
+                SlotType.UAV: [None] * 16,
             },
             ShaderType.Vertex: {
                 SlotType.ConstantBuffer: [None] * 16,
@@ -187,7 +201,7 @@ class FrameDumpModel:
 
     def set_shader(self, shader_type, pointer, hash):
         shader = FrameDumpShader(shader_type, pointer, hash, self.call.id)
-        self.shader[pointer] = shader
+        self.shaders[pointer] = shader
         return shader
 
     def get_current_shader(self, shader_type):
@@ -197,7 +211,7 @@ class FrameDumpModel:
         shader = self.get_shader(pointer)
         if shader is None:
             shader = self.set_shader(shader_type, pointer, hash)
-            self.shader[pointer] = shader
+            self.shaders[pointer] = shader
         self.current_shaders[shader_type] = shader
         return shader
 
@@ -207,28 +221,42 @@ class FrameDumpModel:
     def get_resource(self, pointer):
         return self.resources.get(pointer, None)
 
-    def set_resource(self, pointer, hash):
-        resource = FrameDumpResource(pointer, hash, self.call.id)
-        self.resources[pointer] = resource
+    def set_resource(self, pointer, hash, shader_type, slot_type, slot_id, **kwargs):
+        if kwargs:
+            if 'first_constant' in kwargs.keys():
+                resource = FrameDumpConstantBuffer(pointer, hash, self.call.id, shader_type, slot_type, slot_id, int(kwargs['first_constant']), int(kwargs['num_constants']))
+        else:
+            resource = FrameDumpResource(pointer, hash, self.call.id, shader_type, slot_type, slot_id)
+        self.call.resources[f'{shader_type.value}-{slot_type.value}{slot_id}'] = replace(resource)
+        current_resource = self.get_resource(pointer)
+        if current_resource is None:
+            self.resources[pointer] = resource
+        else:
+            resource = current_resource
         return resource
 
     def get_current_resource(self, shader_type, slot_type, slot_id):
         return self.current_resources[shader_type][slot_type][slot_id]
 
-    def set_current_resource(self, shader_type, slot_type, slot_id, pointer, hash):
-        resource = self.get_resource(pointer)
-        if resource is None:
-            resource = self.set_resource(pointer, hash)
-        self.current_resources[shader_type][slot_type][slot_id] = resource
+    def set_current_resource(self, shader_type, slot_type, slot_id, pointer, hash, **kwargs):
+        resource = self.set_resource(pointer, hash, shader_type, slot_type, slot_id, **kwargs)
+        try:
+            self.current_resources[shader_type][slot_type][slot_id] = resource
+        except Exception as e:
+            raise e
         return resource
 
     def clear_current_resource(self, shader_type, slot_type, slot_id):
-        self.current_resources[shader_type][slot_type][slot_id] = None
+        try:
+            self.current_resources[shader_type][slot_type][slot_id] = None
+        except Exception as e:
+            pass
 
 
 class FrameDumpLogProcessor:
     def __init__(self, dump_path):
         self.path = os.path.join(dump_path, 'log.txt')
+        self.call = None
         self.current_command = None
         self.model = FrameDumpModel()
 
@@ -281,7 +309,7 @@ class FrameDumpLogProcessor:
             CommandType.HSSetShaderResources: (self.handle_set_current_resources_entry, ShaderType.Hull),
             CommandType.DSSetShaderResources: (self.handle_set_current_resources_entry, ShaderType.Domain),
 
-            CommandType.IASetVertexBuffers: (self.handle_ia_set_vertex_buffers_entry, ShaderType.Any),
+            CommandType.IASetVertexBuffers: (self.handle_ia_set_vertex_buffers_entry, ShaderType.Vertex),
             CommandType.CSSetUnorderedAccessViews: (self.handle_cs_set_unordered_access_views_entry, ShaderType.Compute),
 
             CommandType.CopyResource: (self.handle_copy_resource_entry, ShaderType.Any),
@@ -313,6 +341,8 @@ class FrameDumpLogProcessor:
             if self.call is not None and call_id == self.call.id:
                 return ContextType.CurrentCall
             self.call = FrameDumpCall(call_id)
+            self.model.call = self.call
+            self.model.calls[call_id] = self.call
             if call_id in self.calls:
                 raise ValueError(f'data collection for call id {call_id} is already finished, current call id: {self.call.id}')
             self.calls[call_id] = self.call
@@ -382,7 +412,7 @@ class FrameDumpLogProcessor:
         '''
         pattern = re.compile(r'pDstResource:(0x[0-9a-fA-F]+), pSrcResource:(0x[0-9a-fA-F]+)')
         data = self.extract_data(line, pattern)
-        self.resource_copies[data[0]] = data[1]
+        self.model.resource_copies[data[0]] = data[1]
 
     def handle_so_set_targets(self, shader_type, line):
         '''
@@ -492,10 +522,10 @@ class FrameDumpLogProcessor:
         pattern = re.compile(r'(\w+): resource=(0x[0-9a-fA-F]+)(?:.* hash=)?([0-9a-fA-F]+)?')
         data = self.extract_data(line, pattern)
         if data[0] == 'Src':
-            if not data[1] in self.resources:
-                self.resources[data[1]] = FrameDumpResource(data[1], data[2])
+            if not data[1] in self.model.resources:
+                self.model.resources[data[1]] = FrameDumpResource(data[1], data[2], self.call.id, shader_type, SlotType.Unknown, -1)
         elif data[0] == 'Dst':
-            self.resources[data[1]] = FrameDumpResource(data[1], data[2])
+            self.model.resources[data[1]] = FrameDumpResource(data[1], data[2], self.call.id, shader_type, SlotType.Unknown, -1)
         else:
             raise ValueError(f'malformed CopyResource entry {line}')
 
@@ -507,7 +537,7 @@ class FrameDumpLogProcessor:
         pattern = re.compile(r'(\d+): resource=(0x[0-9a-fA-F]+).* hash=([0-9a-fA-F]+)')
         data = self.extract_data(line, pattern)
         if len(data) == 2:
-            resource = FrameDumpResource(data[1], data[2])
+            resource = FrameDumpResource(data[1], data[2], self.call.id, shader_type, SlotType.Unknown, -1)
             self.resources[data[1]] = resource
             self.call.output_resources.append(resource)
         else:
@@ -529,13 +559,13 @@ class FrameDumpLogProcessor:
     def handle_set_constant_buffers_entry(self, shader_type, line):
         '''
         Expected format:
-            1: resource=0x000001ECE165C2B8 hash=f24bbeee
+            1: resource=0x000001ECE165C2B8 hash=f24bbeee first_constant=9584 num_constants=16
         '''
-        pattern = re.compile(r'(\d+): resource=(0x[0-9a-fA-F]+) hash=([0-9a-fA-F]+)')
+        pattern = re.compile(r'(\d+): resource=(0x[0-9a-fA-F]+) hash=([0-9a-fA-F]+)(?: first_constant=([0-9]+) num_constants=([0-9]+))?')
         data = self.extract_data(line, pattern)
-        if len(data) == 3:
-            slot_id, pointer, cb_hash = int(data[0]), data[1], data[2]
-            self.model.set_current_resource(shader_type, SlotType.ConstantBuffer, slot_id, pointer, cb_hash)
+        if len(data) == 5:
+            slot_id, pointer, cb_hash, first_constant, num_constants = int(data[0]), data[1], data[2], data[3] or 0, data[4] or 0
+            self.model.set_current_resource(shader_type, SlotType.ConstantBuffer, slot_id, pointer, cb_hash, first_constant=first_constant, num_constants=num_constants)
         else:
             raise ValueError(f'malformed SetConstantBuffers command entry {line}')
 

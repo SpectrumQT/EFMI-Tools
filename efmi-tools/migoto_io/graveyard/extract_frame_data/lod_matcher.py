@@ -6,8 +6,8 @@ from operator import itemgetter
 from typing import Optional, Dict, Tuple
 from dataclasses import dataclass
 
-from ..migoto_io.data_model.byte_buffer import MigotoFormat
 from ..migoto_io.data_model.numpy_mesh import NumpyMesh, GeometryMatcher, VertexGroupsMatcher
+from ..migoto_io.migoto_model.migoto_format import MigotoFormat
 
 from .output_builder import ObjectData
 
