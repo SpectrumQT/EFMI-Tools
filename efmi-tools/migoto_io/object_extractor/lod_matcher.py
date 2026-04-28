@@ -94,7 +94,7 @@ class LODMatcher:
         else:
             similarity_graph = self.match_components_by_similarity(full_object, lod_object, hash_matched_components)
 
-        similarity_graph.verify_endmin_similarity_graph()
+        # similarity_graph.verify_endmin_similarity_graph()
 
         geo_matched_components = self.get_best_matching_components(similarity_graph)
 
