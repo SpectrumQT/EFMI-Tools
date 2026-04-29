@@ -25,6 +25,7 @@ class MigotoComponent:
     def build_metadata(self, component_name: str):
         self.metadata = ExtractedObjectComponent(
             mesh_name=component_name,
+            cpu_posed=self.mesh.cpu_posed,
             ib_hash=self.raw_data.shader_calls[0].resources.get_by_slot("ib").hash,
             vb0_hash=self.raw_data.shader_calls[0].resources.get_by_slot("vb0").hash,
             vertex_offset=0,

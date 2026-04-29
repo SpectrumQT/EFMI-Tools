@@ -54,6 +54,7 @@ class ExtractedObjectComponentLOD:
 @dataclass
 class ExtractedObjectComponent:
     mesh_name: str
+    cpu_posed: bool
     ib_hash: str
     vb0_hash: str
     vertex_offset: int

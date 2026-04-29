@@ -19,6 +19,7 @@ class MigotoMesh:
     format: MigotoFormat | None = None
     index_buffer: NumpyBuffer | None = None
     vertex_buffer: NumpyBuffer | None = None
+    cpu_posed: bool = False
 
     def get_data(self, semantic: AbstractSemantic | Semantic):
         if isinstance(semantic, Semantic):
