@@ -140,7 +140,7 @@ def extract_frame_data(context, cfg, extract_lods=False):
 
         if cfg.import_extracted_objects:
             for migoto_object in migoto_objects:
-                import_object(context, cfg, migoto_object.id, migoto_object)
+                import_object(context, cfg, migoto_object.id, migoto_object, extended_mesh_name=True)
 
     else:
 

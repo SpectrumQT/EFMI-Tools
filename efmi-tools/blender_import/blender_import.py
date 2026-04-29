@@ -18,6 +18,7 @@ def import_object(
     cfg,
     collection_name: str,
     migoto_object: MigotoObject,
+    extended_mesh_name: bool = False,
 ):
     model = DataModelEFMI()
     model.legacy_vertex_colors = cfg.color_storage == 'LEGACY'
@@ -27,7 +28,14 @@ def import_object(
     for component in migoto_object.components:
         start_time = time.time()
 
-        mesh = bpy.data.meshes.new(component.metadata.mesh_name)
+        if extended_mesh_name:
+            mesh_name = f"{component.metadata.mesh_name} {component.metadata.ib_hash}"
+            if component.metadata.cpu_posed:
+                mesh_name += f" CPU-posed (only textures modding supported)"
+        else:
+            mesh_name = component.metadata.mesh_name
+
+        mesh = bpy.data.meshes.new(mesh_name)
         obj = bpy.data.objects.new(mesh.name, mesh)
 
         vg_remap = None
@@ -84,11 +92,8 @@ def blender_import(operator, context, cfg):
 
     collection_name = object_source_folder.stem
 
-    for component in migoto_object.components:
-        component.metadata.mesh_name = f"{component.metadata.mesh_name} {component.metadata.ib_hash}"
-
     try:
-        import_object(context, cfg, collection_name, migoto_object)
+        import_object(context, cfg, collection_name, migoto_object, extended_mesh_name=True)
     except Exception as e:
         raise ConfigError('object_source_folder', f'Failed to import object from sources folder:\n{e}')
 
