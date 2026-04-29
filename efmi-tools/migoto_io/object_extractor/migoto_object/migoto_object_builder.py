@@ -44,16 +44,25 @@ class MigotoObjectBuilder:
         ): BufferSemantic(
             AbstractSemantic(Semantic.EncodedData, 0), format=DXGIFormat.R32_UINT, input_slot=0
         ),
+        # Characters
         BufferSemantic(
             AbstractSemantic(Semantic.TexCoord, 4), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=1
         ): BufferSemantic(
             AbstractSemantic(Semantic.Color, 0), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=1
         ),
+        # Factory buildings
         BufferSemantic(
             AbstractSemantic(Semantic.TexCoord, 3), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
         ): BufferSemantic(
             AbstractSemantic(Semantic.Color, 2), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
         ),
+        # Rossi
+        BufferSemantic(
+            AbstractSemantic(Semantic.Color, 0), format=DXGIFormat.R8G8B8A8_UNORM, input_slot=1
+        ): BufferSemantic(
+            AbstractSemantic(Semantic.Color, 3), format=DXGIFormat.R8G8B8A8_UNORM, input_slot=1
+        ),
+
         BufferSemantic(
             AbstractSemantic(Semantic.TexCoord, 4), format=DXGIFormat.R8G8B8A8_SNORM, input_slot=2
         ): BufferSemantic(
