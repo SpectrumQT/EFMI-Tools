@@ -8,6 +8,7 @@ from ..addon.exceptions import ConfigError
 from ..migoto_io.blender_interface.collections import *
 from ..migoto_io.blender_interface.objects import *
 
+from ..migoto_io.blender_tools.modifiers import apply_modifiers_for_object_with_shape_keys
 from ..migoto_io.blender_tools.vertex_groups import fill_gaps_in_vertex_groups
 
 from ..migoto_io.object_extractor.migoto_object.metadata_format import ExtractedObject
@@ -194,7 +195,8 @@ class ObjectMerger:
                     bpy.ops.object.transform_apply(location = True, rotation = True, scale = True)
                     # Apply all modifiers
                     if self.apply_modifiers:
-                        bpy.ops.object.convert(target='MESH')
+                        shapekey_pattern = re.compile(r'.*(?:deform|custom)[_ -]*(\d+).*')
+                        apply_modifiers_for_object_with_shape_keys(self.context, None, False, shapekey_pattern)
                     # Triangulate (this step is crucial since export supports only triangles)
                     triangulate_object(self.context, obj)
 
