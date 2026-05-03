@@ -59,7 +59,8 @@ class DrawCallFilter:
 class RawObjectIdentifier:
 
     @staticmethod
-    def get_object_id(shader_call: ShaderCall) -> str:
+    def get_object_id(shader_call: ShaderCall) -> tuple[str, bool]:
+
         dynamic_cb = None
 
         for slot, cb in shader_call.resources.constant_buffers.items():
@@ -90,7 +91,9 @@ class RawObjectIdentifier:
 
         object_id = f"{fragment_hash:016x}"
 
-        return object_id
+        gpu_posed = numpy.bitwise_and(numpy.int32(-17), data[offset + 4, 3].view(numpy.int32)) != 0
+
+        return object_id, gpu_posed
 
 
 @dataclass
@@ -138,7 +141,7 @@ class RawObjectExtractor:
     identifier: RawObjectIdentifier
     raw_object_filter: RawObjectFilter
 
-    def register_shader_call(self, extracted_object: RawObject, shader_call: ShaderCall):
+    def register_shader_call(self, extracted_object: RawObject, shader_call: ShaderCall, gpu_posed: bool):
         ib: IndexBuffer = shader_call.resources.get_by_slot(ResourceSlot(ShaderType.Any, SlotType.IndexBuffer, 0))
         ib.build_numpy_buffer()
 
@@ -179,7 +182,8 @@ class RawObjectExtractor:
         if component is None:
             component = RawComponent(
                 vertex_offset=vertex_offset,
-                vertex_count=vertex_count
+                vertex_count=vertex_count,
+                gpu_posed=gpu_posed,
             )
             extracted_object.components[draw_key] = component
 
@@ -192,7 +196,7 @@ class RawObjectExtractor:
         raw_objects: dict[str, RawObject] = {}
         for shader_call in shader_calls:
                 
-            object_id = self.identifier.get_object_id(shader_call)
+            object_id, gpu_posed = self.identifier.get_object_id(shader_call)
 
             extracted_object = raw_objects.get(object_id, None)
 
@@ -202,7 +206,7 @@ class RawObjectExtractor:
                 )
                 raw_objects[object_id] = extracted_object
 
-            self.register_shader_call(extracted_object, shader_call)
+            self.register_shader_call(extracted_object, shader_call, gpu_posed)
 
         filtered_objects = {}
         for object_id, extracted_object in raw_objects.items():

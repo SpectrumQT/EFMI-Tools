@@ -9,6 +9,7 @@ from ...migoto_model.frame_model.resources import Resource
 class RawComponent:
     vertex_offset: int
     vertex_count: int
+    gpu_posed: bool
     shader_calls: list[ShaderCall] = field(default_factory=list)
 
     def get_resources(

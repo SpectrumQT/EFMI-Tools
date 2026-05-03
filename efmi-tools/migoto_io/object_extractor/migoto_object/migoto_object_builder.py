@@ -323,13 +323,7 @@ class MigotoObjectBuilder:
 
         if migoto_object.id.startswith("Character"):
             for component in migoto_object.components:
-                if component.mesh.vertex_buffer.layout.get_element(AbstractSemantic(Semantic.EncodedData, 0)):
-                    continue
-                if not component.mesh.vertex_buffer.layout.get_element(AbstractSemantic(Semantic.Normal, 0)):
-                    continue
-                if not component.mesh.vertex_buffer.layout.get_element(AbstractSemantic(Semantic.Tangent, 0)):
-                    continue
-                component.mesh.cpu_posed = True
+                component.mesh.cpu_posed = not component.raw_data.gpu_posed
 
     def filter_object(self, migoto_object: MigotoObject) -> bool:
 
