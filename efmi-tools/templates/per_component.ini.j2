@@ -161,6 +161,7 @@ endif
 {{note("Trigger TextureOverride sections for PS slots from 0 to 20 with matching `hash` values")}}
 {{note("If hash of resource in slot matches TextureOverride hash, TextureOverride puts defined custom texture Resource in `this` slot")}}
 run = CommandList\EFMIv1\OverrideTextures
+{%- if not component.cpu_posed %}
 {{note("Do by-slot resource overrides")}}
 ib = ref Resource_Component{{ component_id }}_IB
 vb0 = ref Resource_Component{{ component_id }}_VB0
@@ -182,16 +183,26 @@ elif $lod_level == {{ lod_id + 1 }}
 {%- endfor %}
 endif
 {%- endif %}
-{{note("Some shaders (e.g. wetness) are being supplied with differently mapped VB0 copy")}}
-vb3 = ref Resource_Component{{ component_id }}_VB0
+{%- else %}
+; Component is posed on CPU, vertex buffers modding not supported
+{%- endif %}
 {%- for obj in merged_object.components[component_id].objects %}
 ; Draw {{ obj.name }}
 {%- if cfg.use_ini_toggles %}
 if {{ formatter.format_ini_drawvar(obj.name) }}
+    {%- if not component.cpu_posed %}
     drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
+    {%- else %}
+    draw = from_caller
+    {%- endif %}
 endif
 {%- else %}
+{%- if not component.cpu_posed %}
 drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
+{%- else %}
+{{note("Use original draw type and arguments (since mesh geometry is not modified)")}}
+draw = from_caller
+{%- endif %}
 {%- endif %}
 {%- endfor %}
 
