@@ -188,6 +188,12 @@ class DataModel:
                     semantic_converters = []
                     format_converters = []
                     format_converters += self.format_encoders.get(semantic.abstract, [])
+                    # Normalize weights
+                    if semantic.abstract.enum == Semantic.Blendweights:
+                        if semantic.format.numpy_base_type in [numpy.uint8, numpy.uint16]:
+                            format_converters.append(lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=semantic.format.numpy_base_type))
+                        else:
+                            semantic_converters.append(lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=numpy.float32))
                     buffer.import_semantic_data(data, semantic, semantic_converters, format_converters)
                 except Exception as e:
                     raise ValueError(f'Failed to import {semantic} data for buffer {buffer_name}: {e}')
