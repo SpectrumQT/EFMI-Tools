@@ -110,6 +110,8 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         name="Min Component Count",
         description="Skip extracting objects with less components than specified",
         default=0,
+        min=0,
+        max=20,
     ) # type: ignore
 
     skip_object_min_texture_count_enabled: BoolProperty(
@@ -122,6 +124,8 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         name="Min Texture Count",
         description="Skip extracting objects with less textures than specified",
         default=0,
+        min=0,
+        max=32,
     ) # type: ignore
 
     skip_object_resource_hashes_enabled: BoolProperty(
@@ -146,6 +150,8 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         name="Min Size (KB)",
         description="Minimal texture size in KB. Default is 256KB",
         default=256,
+        min=0,
+        max=16384,
     ) # type: ignore
 
     skip_jpg_textures: BoolProperty(
@@ -259,6 +265,33 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         max=1,
         precision=2,
     ) # type: ignore
+
+    skip_component_below_vertex_count_enabled: BoolProperty(
+        name="Components Filtering: Min Vertex Count",
+        description="Exclude LoD candidate components below specified vertex count from LoD matching",
+        default=False,
+    ) # type: ignore
+
+    skip_component_below_vertex_count: IntProperty(
+        name="Min Vertex Count",
+        description="Exclude LoD candidate components below specified vertex count from LoD matching",
+        default=0,
+        min=0,
+        max=100000,
+    ) # type: ignore
+
+    skip_component_hashes_enabled: BoolProperty(
+        name="Components Filtering: Blacklisted Hashes",
+        description="Exclude candidate components with specified IB hashes from LoD matching",
+        default=False,
+    ) # type: ignore
+
+    skip_component_hashes: StringProperty(
+        name="",
+        description="Exclude candidate components with specified IB hashes from LoD matching",
+        default="",
+    ) # type: ignore
+
 
     # Geo Matcher Voxel
 

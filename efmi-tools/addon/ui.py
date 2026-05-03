@@ -281,6 +281,20 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         sub.prop(cfg, "skip_object_resource_hashes")
 
         layout.row()
+        
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_component_below_vertex_count_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_component_below_vertex_count_enabled
+        sub.prop(cfg, "skip_component_below_vertex_count")
+
+        row = layout.row(align=True)
+        row.prop(cfg, "skip_component_hashes_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.skip_component_hashes_enabled
+        sub.prop(cfg, "skip_component_hashes")
+
+        layout.row()
 
         row = add_row_with_error_handler(layout, cfg, 'geo_matcher_error_threshold')
 

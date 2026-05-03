@@ -75,9 +75,6 @@ class MigotoComponent:
             if lod_metadata.lod_object_name == new_lod_metadata.lod_object_name:
                 if not allow_overwrite:
                     raise DuplicateDataError(f"{self.metadata.mesh_name} already contains LoD imported from {lod_object_name}!")
-            elif lod_metadata.vertex_count == new_lod_metadata.vertex_count:
-                if not allow_overwrite:
-                    raise DuplicateDataError(f"{self.metadata.mesh_name} already contains LoD with {lod_metadata.vertex_count} vertices!")
             else:
                 lods.append(lod_metadata)
 

@@ -27,6 +27,8 @@ def match_lods(
  ) -> tuple[MigotoObject, dict[MigotoComponent, tuple[MigotoComponent, dict[int, int] | None]]]:
     error_threshold = cfg.geo_matcher_voxel_error_threshold if cfg.geo_matcher_method == 'VOXEL' else cfg.geo_matcher_error_threshold
     lod_matcher = LODMatcher(
+        component_min_vertex_count=cfg.skip_component_below_vertex_count if cfg.skip_component_below_vertex_count_enabled else 0,
+        component_hash_blacklist=cfg.skip_component_hashes if cfg.skip_component_hashes_enabled else "",
         object_similarity_threshold=error_threshold,
         component_similarity_threshold=error_threshold,
         geo_matcher_main_config=GeometryMatcherConfig(
@@ -61,7 +63,7 @@ def import_lods(
     for full_component in full_object.components:
         (lod_component, vg_map) = matched_components.get(full_component, (None, None))
         if lod_component is None:
-            continue
+            lod_component = full_component
         try:
             full_component.import_lod_metadata(lod_object.id, lod_component, vg_map, cfg.allow_lod_overwrite)
         except DuplicateDataError as e:
@@ -81,6 +83,8 @@ def import_lods(
 
         for full_component in full_object.components:
             (lod_component, _) = matched_components.get(full_component, (None, None))
+            if lod_component is None:
+                continue
             mesh_name = f"{full_component.metadata.mesh_name} full={full_component.metadata.ib_hash} lod={lod_component.metadata.ib_hash}"
             if lod_component.metadata.ib_hash == full_component.metadata.ib_hash:
                 if lod_component.metadata.vg_map:
@@ -91,6 +95,17 @@ def import_lods(
                 mesh_name += f" (simplified mesh and skeleton)"
             lod_component.metadata.mesh_name = mesh_name
 
+        print("Non-matched components:")
+        matched_lod_components = [lod_component for lod_component, _ in matched_components.values() if lod_component]
+        for lod_component in lod_object.components:
+            if lod_component.metadata.mesh_name.startswith("Skipped"):
+                print(lod_component.metadata.mesh_name)
+                continue
+            if lod_component not in matched_lod_components:
+                lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (no matching full component found)"
+                print(lod_component.metadata.mesh_name)
+
+        print(f"Importing object {lod_object.id} to Blender...")
         import_object(context, cfg, collection_name, lod_object)
 
 

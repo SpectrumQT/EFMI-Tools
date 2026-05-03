@@ -1,4 +1,5 @@
 import time
+import re
 
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -58,6 +59,9 @@ class SimilarityGraph:
 
 @dataclass
 class LODMatcher:
+
+    component_min_vertex_count: int
+    component_hash_blacklist: str
 
     object_similarity_threshold: float
     component_similarity_threshold: float
@@ -121,14 +125,36 @@ class LODMatcher:
 
         candidates = []
 
+        component_hash_blacklist = set([x for x in re.split(r"[,; ]", self.component_hash_blacklist) if x])
+
+        lod_hashes = {}
+        for full_component in full_object.components:
+            for lod in full_component.metadata.lods:
+                lod_hashes[lod.ib_hash] = lod.lod_object_name
+
         for lod_object in lod_candidate_objects:
-            # Skip object with more components. LOD is never more detailed than max quality mesh.
-            if len(lod_object.components) > len(full_object.components):
-                continue
             # Skip object with 2+ times fewer components.
             if len(lod_object.components) < len(full_object.components) / 2:
                 continue
+
+            for lod_component in lod_object.components:
+
+                # Check if lod_component hash is already imported from other lod object.
+                known_lod_object = lod_hashes.get(lod_component.metadata.ib_hash, None)
+                if known_lod_object is not None and known_lod_object != lod_object.id:
+                    lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (already imported from {known_lod_object})"
+                    continue
+
+                if lod_component.metadata.ib_hash in component_hash_blacklist:
+                    lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (component hash blacklisted)"
+                    continue
+
+                if lod_component.metadata.vertex_count < self.component_min_vertex_count:
+                    lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (vertex count below minimum)"
+                    continue
+
             candidates.append(lod_object)
+            
         return candidates
 
     def remap_vertex_groups(
@@ -176,6 +202,9 @@ class LODMatcher:
             matches = {}
 
             for lod_component in lod_object.components:
+                if lod_component.metadata.mesh_name.startswith("Skipped"):
+                    continue
+
                 full_component = full_by_hash.get(lod_component.metadata.ib_hash)
 
                 if full_component is None:
@@ -250,6 +279,8 @@ class LODMatcher:
         similarities = {}
 
         for lod_component in lod_components:
+            if lod_component.metadata.mesh_name.startswith("Skipped"):
+                continue
 
             self.geo_matcher.cfg = self.geo_matcher_prefilter_config
 
