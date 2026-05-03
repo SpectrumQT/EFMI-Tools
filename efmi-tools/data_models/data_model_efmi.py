@@ -146,9 +146,9 @@ class DataModelEFMI(DataModel):
 
         vertex_ids = vertex_buffer.get_field(AbstractSemantic(Semantic.VertexId))
 
-        tangents = vertex_buffer.get_field(AbstractSemantic(Semantic.Tangent, 0))
-        if tangents is not None:
-            tangents[:, 3] = vertex_buffer.get_field(AbstractSemantic(Semantic.BitangentSign, 1))
+        # tangents = vertex_buffer.get_field(AbstractSemantic(Semantic.Tangent, 0))
+        # if tangents is not None:
+        #     tangents[:, 3] = vertex_buffer.get_field(AbstractSemantic(Semantic.BitangentSign, 1))
                 
         if vertex_buffer.get_field(AbstractSemantic(Semantic.EncodedData, 0)) is not None:
             # Fill ENCODEDDATA0 field (encoded TBN)
