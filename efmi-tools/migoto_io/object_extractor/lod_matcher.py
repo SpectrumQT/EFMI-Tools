@@ -30,6 +30,8 @@ class SimilarityGraph:
     def calculate_object_similarity(self) -> float:
         total_similarity = 0
         for lod_component, similarities in self.data.items():
+            if not similarities:
+                continue
             similarity = next(iter(similarities.values()))
             total_similarity += similarity
         weighted_similarity = total_similarity / len(self.data)
@@ -241,7 +243,7 @@ class LODMatcher:
         for lod_object in lod_object_candidates:
             similarity_graph = self.calculate_similarity_graph(full_object.components, lod_object.components)
             lod_object_similarity_graphs[lod_object] = similarity_graph
-            lod_object_similarities[lod_object] = self.calculate_object_similarity(similarity_graph)
+            lod_object_similarities[lod_object] = similarity_graph.calculate_object_similarity()
 
         matched_lod_object = max(
             lod_object_similarity_graphs,
