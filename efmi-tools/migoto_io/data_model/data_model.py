@@ -550,8 +550,13 @@ class DataModel:
         # Detect quantization target
         if dtype == numpy.uint8:
             container_max = 255
+            requires_quantization = True
         elif dtype == numpy.uint16:
             container_max = 65535
+            requires_quantization = True
+        elif dtype == numpy.dtype(numpy.float32):
+            container_max = 1.0
+            requires_quantization = False
         else:
             raise ValueError(f'Cannot normalize to dtype {dtype} (not supported)')
 
@@ -560,8 +565,11 @@ class DataModel:
         # Replace any non-float weight values with zeroes
         if sanitize:
             weights = numpy.nan_to_num(weights, nan=0.0, posinf=0.0, neginf=0.0)
-        # Ignore weights below minimal precision
-        weights[weights < 1/container_max] = 0.0
+
+        if requires_quantization:
+            # Ignore weights below minimal precision
+            weights[weights < 1/container_max] = 0.0
+
         # Calculate total weights for each vertex
         weight_sums = weights.sum(axis=1, keepdims=True)
         # Weight vertices without weights (with zero sum) to the first VG
@@ -571,6 +579,10 @@ class DataModel:
             weight_sums[zero_sums_idx] = 1.0
         # Normalize weights with 32-bit precision
         weights /= weight_sums
+
+        # Float32 target needs no advanced quantization
+        if not requires_quantization:
+            return weights.astype(numpy.float32)
 
         # Step 2: Normalize weights with target precision
 
