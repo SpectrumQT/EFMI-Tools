@@ -40,14 +40,10 @@ class DataModelEFMI(DataModel):
             # AbstractSemantic(Semantic.Normal, 0): [self.decode_tbn_data_10_10_10_2],
         }
         self.semantic_encoders = {
-            # Reshape flat array [[0,0,0],[0,0,0]] to [[0,0,0,1],[0,0,0,1]]
-            AbstractSemantic(Semantic.Tangent, 0): [lambda data: self.converter_resize_second_dim(data, 4, fill=1)],
         }
         self.format_encoders = {
-            # Normalize weights to 16-bit values, skip sanitizing since it's already done by DataExtractor
-            AbstractSemantic(Semantic.Blendweights, 0): [lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=numpy.uint16)],
-            # Reshape flat array [0,1,2,3,4,5] to [[0,1,2],[3,4,5]]
-            AbstractSemantic(Semantic.Index): [lambda data: self.converter_reshape_second_dim(data, 3)],
+            # Reshape flat array [[0,0,0],[0,0,0]] to [[0,0,0,1],[0,0,0,1]]
+            AbstractSemantic(Semantic.Tangent, 0): [lambda data: self.converter_resize_second_dim(data, 4, fill=1)],
         }
     
     def set_data(

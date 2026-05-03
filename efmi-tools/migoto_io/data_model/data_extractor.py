@@ -22,14 +22,17 @@ class BlenderDataExtractor:
     format_converters: Dict[AbstractSemantic, List[callable]] = {}
     semantic_converters: Dict[AbstractSemantic, List[callable]] = {}
 
-    def get_data(self, 
-                 mesh: bpy.types.Mesh, 
-                 layout: BufferLayout, 
-                 blender_data_formats: Dict[Semantic, DXGIFormat],
-                 semantic_converters: Dict[AbstractSemantic, List[callable]], 
-                 format_converters: Dict[AbstractSemantic, List[callable]],
-                 vertex_ids_cache: Optional[numpy.ndarray] = None,
-                 flip_winding= False) -> Tuple[numpy.ndarray, NumpyBuffer]:
+    def get_data(
+        self, 
+        mesh: bpy.types.Mesh, 
+        layout: BufferLayout, 
+        blender_data_formats: Dict[Semantic, DXGIFormat],
+        semantic_converters: Dict[AbstractSemantic, List[callable]], 
+        format_converters: Dict[AbstractSemantic, List[callable]],
+        vertex_ids_cache: Optional[numpy.ndarray] = None,
+        flip_winding: bool = False,
+        output_with_proxy_layout: bool = False,
+    ) -> Tuple[numpy.ndarray, NumpyBuffer]:
         
         self.blender_data_formats = blender_data_formats
         
@@ -43,6 +46,8 @@ class BlenderDataExtractor:
 
         layout.add_element(BufferSemantic(AbstractSemantic(Semantic.VertexId, 0), self.blender_data_formats[Semantic.VertexId]))
         proxy_layout = self.make_proxy_layout(layout, semantic_converters)
+        if output_with_proxy_layout:
+            layout = proxy_layout
 
         if vertex_ids_cache is None:
             # Extract requested data from blender loop vertices

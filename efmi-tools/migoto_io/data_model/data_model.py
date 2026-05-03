@@ -157,6 +157,9 @@ class DataModel:
         
         start_time = time.time()
 
+        # Reshape flat array [0,1,2,3,4,5] to [[0,1,2],[3,4,5]]
+        index_data = self.converter_reshape_second_dim(index_data, 3)
+
         result = {}
         for buffer_name, buffer_layout in buffers_format.items():
             buffer = None
@@ -182,7 +185,10 @@ class DataModel:
                 if buffer is None:
                     buffer = NumpyBuffer(buffer_layout, size=len(data))
                 try:
-                    buffer.import_semantic_data(data, semantic)
+                    semantic_converters = []
+                    format_converters = []
+                    format_converters += self.format_encoders.get(semantic.abstract, [])
+                    buffer.import_semantic_data(data, semantic, semantic_converters, format_converters)
                 except Exception as e:
                     raise ValueError(f'Failed to import {semantic} data for buffer {buffer_name}: {e}')
             if buffer is None:
@@ -292,7 +298,7 @@ class DataModel:
         # Copy default converters
         semantic_converters, format_converters = {}, {}
         semantic_converters.update(copy.deepcopy(self.semantic_encoders))
-        format_converters.update(copy.deepcopy(self.format_encoders))
+        # format_converters.update(copy.deepcopy(self.format_encoders))
 
         # Add generic converters
         for semantic in export_layout.semantics:
@@ -322,7 +328,15 @@ class DataModel:
 
         # If vertex_ids_cache is *not* None, get_data method will skip loop data fetching
         index_buffer, vertex_buffer = self.data_extractor.get_data(
-            mesh, export_layout, self.blender_data_formats, semantic_converters, format_converters, vertex_ids_cache, flip_winding=flip_winding)
+            mesh,
+            export_layout,
+            self.blender_data_formats,
+            semantic_converters,
+            format_converters,
+            vertex_ids_cache,
+            flip_winding=flip_winding,
+            output_with_proxy_layout=True,
+        )
 
         if cache_vertex_ids:
             # As vertex_ids_cache is None, get_data fetched loop data for us and we can cache vertex ids

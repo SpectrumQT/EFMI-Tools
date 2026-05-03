@@ -420,11 +420,13 @@ class NumpyBuffer:
         else:
             self.data = numpy.unique(self.data)
 
-    def import_semantic_data(self,
-                             data: numpy.ndarray, 
-                             semantic: Union[BufferSemantic, int], 
-                             semantic_converters: list[Callable] | None = None,
-                             format_converters: list[Callable] | None = None):
+    def import_semantic_data(
+        self,
+        data: numpy.ndarray, 
+        semantic: Union[BufferSemantic, int], 
+        semantic_converters: list[Callable] | None = None,
+        format_converters: list[Callable] | None = None,
+    ):
         
         if isinstance(semantic, int):
             semantic = self.layout.semantics[semantic]
@@ -461,17 +463,18 @@ class NumpyBuffer:
                 field_data, 
                 data_semantic,
                 semantic_converters.get(buffer_semantic.abstract, []),
-                format_converters.get(buffer_semantic.abstract, []))
+                format_converters.get(buffer_semantic.abstract, []),
+            )
             
     def import_raw_data(self, data: numpy.ndarray | bytes):
         self.data = numpy.frombuffer(data, dtype=self.layout.get_numpy_type())
 
     def import_txt_data(
-            self,
-            data: str,
-            remapped_semantics,
-            is_ib: bool = False,
-            ib_points_per_face: int = 3,
+        self,
+        data: str,
+        remapped_semantics,
+        is_ib: bool = False,
+        ib_points_per_face: int = 3,
     ):
         remapped_semantics = remapped_semantics or {}
 
