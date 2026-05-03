@@ -47,7 +47,10 @@ class Resource:
                 if byte_offset != 0:
                     f.seek(byte_offset)
                 # Calculate read size from layout stride and elements count
-                byte_size = migoto_format.get_byte_size(from_ib_layout=from_ib_format)
+                if not self.usage_descriptor.resource_hash.startswith("UNKNOWN_"):
+                    byte_size = migoto_format.get_byte_size(from_ib_layout=from_ib_format)
+                else:
+                    byte_size = 0
                 # Import bytes
                 buffer.import_raw_data(f.read(byte_size or -1))
 
@@ -139,8 +142,6 @@ class MigotoBuffer(Resource):
 
     def get_view(self) -> "IndexBuffer | VertexBuffer":
 
-        self.load_format()
-
         byte_offset = self.migoto_format.get_byte_offset()
         byte_size = self.migoto_format.get_byte_size()
 
@@ -179,6 +180,9 @@ class VertexBuffer(MigotoBuffer):
                 from_txt=from_txt,
                 txt_remapped_semantics=txt_remapped_semantics,
             )
+
+            if migoto_format.vertex_count == 0 or self.usage_descriptor.resource_hash.startswith("UNKNOWN_"):
+                migoto_format.vertex_count = len(buffer.data)
 
             num_elements = migoto_format.vertex_count
 
@@ -246,6 +250,9 @@ class IndexBuffer(MigotoBuffer):
 
             data = buffer.get_field(Semantic.Index)
             second_dim_size = data.shape[1] if data.ndim == 2 else 1
+
+            if migoto_format.index_count == 0 or self.usage_descriptor.resource_hash.startswith("UNKNOWN_"):
+                migoto_format.index_count = len(data) * second_dim_size
 
             # Ensure sanity of expected data
             if migoto_format.first_index % second_dim_size != 0:

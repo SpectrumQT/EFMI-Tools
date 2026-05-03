@@ -89,6 +89,14 @@ class MigotoDumpFile(CommandCall):
             #     raise ValueError
             resource.data_descriptor = data_descriptor
 
+        if usage_descriptor.resource_hash is None:
+            shader_call.has_unknown_resource = True
+            if self.deduped_path.suffix != ".buf":
+                usage_descriptor.resource_hash = f"UNKNOWN_{data_descriptor.resource_hash}"
+            else:
+                usage_descriptor.resource_hash = f"UNKNOWN_{self.deduped_path.stem}"
+            resource.hash = usage_descriptor.resource_hash
+
         if self.resource_path.suffix == ".txt":
             resource.txt_path = dump_model.cfg.dump_path / self.resource_path.name
             resource.txt_path_deduped = dump_model.cfg.dump_path / 'deduped' / self.deduped_path.name
@@ -98,16 +106,15 @@ class MigotoDumpFile(CommandCall):
 
         if resource.hash is None or resource.hash == "None":
             return
+        
+        if isinstance(resource, MigotoBuffer) and resource.data_descriptor is not None:
 
-        if usage_descriptor.original_hash == resource.hash and self.resource_path.suffix == ".txt":
-            # Should never happen
-            if resource.hash == usage_descriptor.resource_hash:
-                raise ValueError
-            # Should never happen
-            if not isinstance(resource, MigotoBuffer):
-                raise ValueError
+            resource.load_format()
 
-            resource_view = resource.get_view()
-            dump_model.set_resource(slot, resource_view)
+            if usage_descriptor.original_hash == resource.hash:
+                # Should never happen
+                if resource.hash == usage_descriptor.resource_hash:
+                    raise ValueError
 
-        pass
+                resource_view = resource.get_view()
+                dump_model.set_resource(slot, resource_view)

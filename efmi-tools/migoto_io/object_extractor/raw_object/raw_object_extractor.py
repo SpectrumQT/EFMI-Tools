@@ -28,6 +28,11 @@ class DrawCallFilter:
             if not isinstance(shader_call.draw_call, DrawIndexedInstanced):
                 continue
 
+            # Resource may be missing "real" in-game hash if it's malformed or loaded from local files.
+            # In either case there's no way to produce a healthy mod due to missing metadata.
+            if shader_call.has_unknown_resource:
+                continue
+
             buffers = shader_call.resources
 
             vb0 = buffers.get_by_slot(ResourceSlot(ShaderType.Any, SlotType.VertexBuffer, 0))
@@ -53,7 +58,7 @@ class DrawCallFilter:
             calls.append(shader_call)
 
         return calls
-    
+
 
 @dataclass
 class RawObjectIdentifier:
@@ -156,7 +161,7 @@ class RawObjectExtractor:
         vertex_count = int(max(vertex_indices) - vertex_offset + 1)
 
         # Ensure that IB is addressing only existing VB0 vertices.
-        if vb0.migoto_format.vertex_count < vertex_count:
+        if vb0.migoto_format.vertex_count < vertex_count and not vb0.usage_descriptor.resource_hash.startswith("UNKNOWN_"):
             raise ValueError(f"BUG: Call {shader_call.id:06d} IB-addressed vertex count {vertex_count} is above VB0 vertex count {vb0.migoto_format.vertex_count}!")
 
         # When lower bound of IB-addressed VB segment is non-zero, vertex indices in IB should be decremented

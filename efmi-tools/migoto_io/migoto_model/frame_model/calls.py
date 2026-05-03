@@ -33,6 +33,7 @@ class ShaderCall:
     resources: ResourceStorage | None = None  # Resources explicitly set by commands of this call
     model_resources: ResourceStorage | None = None  # Both explicitly and implicitly set resources
     draw_call: CommandCall | None = None
+    has_unknown_resource: bool = False
 
     @classmethod
     def from_dumped_call(
