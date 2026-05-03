@@ -7,7 +7,7 @@ from ...migoto_model.migoto_mesh import MigotoMesh, WeightingType
 
 from ..raw_object.raw_object import RawComponent
 
-from .metadata_format import ExtractedObject, ExtractedObjectComponent, ExtractedObjectShapeKeys, ExtractedObjectComponentLOD, ObjectRotation
+from .metadata_format import ExtractedObject, ExtractedObjectComponent, ExtractedObjectShapeKeys, ExtractedObjectComponentLOD, ObjectRotation, ExtractedObjectBuffer
 from .metadata_format import read_metadata
 
 
@@ -45,6 +45,19 @@ class MigotoComponent:
         vg_map: dict[int, int] | None,
         allow_overwrite: bool = False,
     ):
+        
+        full_layout = self.mesh.vertex_buffer.layout
+        lod_layout = lod_component.mesh.vertex_buffer.layout
+
+        input_slots = full_layout.get_input_slots() | lod_layout.get_input_slots()
+
+        vb_formats = {}
+        for input_slot in input_slots:
+            full_slot_layout = full_layout.get_input_slot_layout(input_slot)
+            lod_slot_layout = lod_layout.get_input_slot_layout(input_slot)
+            if full_slot_layout.to_string() != lod_slot_layout.to_string():
+                vb_formats[f"VB{input_slot}"] = ExtractedObjectBuffer.from_buffer_layout(lod_slot_layout)
+
         new_lod_metadata = ExtractedObjectComponentLOD(
             lod_object_name=lod_object_name,
             ib_hash=lod_component.metadata.ib_hash,
@@ -54,6 +67,7 @@ class MigotoComponent:
             index_offset=lod_component.metadata.index_offset,
             index_count=lod_component.metadata.index_count,
             vg_map=vg_map,
+            vb_formats=vb_formats,
         )
 
         lods = []

@@ -24,18 +24,39 @@ class ExtractedObjectBufferSemantic:
         if self.stride == 0:
             self.stride = self.format.byte_width
 
-    def get_buffer_semantic(self) -> BufferSemantic:
-        return BufferSemantic(AbstractSemantic(self.name, self.index), self.format, stride=self.stride)
+    @classmethod
+    def from_buffer_semantic(cls, buffer_semantic: BufferSemantic):
+        return cls(
+            name=buffer_semantic.abstract.enum,
+            index=buffer_semantic.abstract.index,
+            format=buffer_semantic.format,
+            stride=buffer_semantic.stride,
+        )
+
+    def to_buffer_semantic(self) -> BufferSemantic:
+        return BufferSemantic(
+            abstract=AbstractSemantic(self.name, self.index),
+            format=self.format,
+            stride=self.stride,
+        )
 
 
 @dataclass
 class ExtractedObjectBuffer:
     semantics: list[ExtractedObjectBufferSemantic]
 
-    def get_layout(self) -> BufferLayout:
+    @classmethod
+    def from_buffer_layout(cls, layout: BufferLayout):
+        return ExtractedObjectBuffer(
+            semantics=[
+                ExtractedObjectBufferSemantic.from_buffer_semantic(semantic) for semantic in layout.semantics
+            ]
+        )
+
+    def to_layout(self) -> BufferLayout:
         layout = BufferLayout([])
         for semantic in self.semantics:
-            layout.add_element(semantic.get_buffer_semantic())
+            layout.add_element(semantic.to_buffer_semantic())
         return layout
 
 
@@ -49,6 +70,7 @@ class ExtractedObjectComponentLOD:
     index_offset: int
     index_count: int
     vg_map: dict[int, int]
+    vb_formats: dict[str, ExtractedObjectBuffer]
 
 
 @dataclass

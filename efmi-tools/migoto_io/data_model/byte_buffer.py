@@ -247,9 +247,23 @@ class BufferLayout:
     
     def get_max_input_slot(self) -> int:
         return max([semantic.input_slot for semantic in self.semantics])
+
+    def get_input_slots(self) -> set[int]:
+        return {semantic.input_slot for semantic in self.semantics}
     
     def get_elements_in_slot(self, input_slot: int) -> list[BufferSemantic]:
         return [semantic for semantic in self.semantics if semantic.input_slot == input_slot]
+    
+    @classmethod
+    def from_buffer_semantics(cls, buffer_semantics: list[BufferSemantic]) -> "BufferLayout":
+        layout = cls([])
+        for buffer_semantic in buffer_semantics:
+            layout.add_element(buffer_semantic)
+        return layout
+    
+    def get_input_slot_layout(self, input_slot: int) -> "BufferLayout":
+        semantics = self.get_elements_in_slot(input_slot)
+        return BufferLayout.from_buffer_semantics(semantics)
     
     def sort(self):
         self.semantics.sort(key=attrgetter('input_slot', 'offset'))

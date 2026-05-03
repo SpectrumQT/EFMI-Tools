@@ -191,28 +191,34 @@ class ModExporter:
         if not lod_meshes:
             return
 
-        vb2 = self.buffers.get(f'Component{component_id}_VB2', None)
-        if vb2 is None:
-            return
-
-        indices = vb2.get_field(Semantic.Blendindices)
-        vg_count = int(indices.max()) + 1
-
         for lod_id, lod_mesh in enumerate(lod_meshes):
             if not lod_mesh.vg_map:
                 continue
 
+            lod_level = lod_id + 1
+
+            if "VB2" in lod_mesh.vb_formats:
+                vb2 = self.buffers.get(f'Component{component_id}_VB2_LOD{lod_level}', None)
+            else:
+                vb2 = self.buffers.get(f'Component{component_id}_VB2', None)
+
+            if vb2 is None:
+                continue
+
+            indices = vb2.get_field(Semantic.Blendindices)
+            vg_count = int(indices.max()) + 1
+            
             remap = numpy.array([lod_mesh.vg_map.get(str(vg_id), vg_id) for vg_id in range(vg_count)])
 
-            vb2_lod = NumpyBuffer(layout=vb2.layout, size=len(vb2.data))
+            vb2_remapped = NumpyBuffer(layout=vb2.layout, size=len(vb2.data))
 
-            vb2_lod.set_field(Semantic.Blendindices, remap[indices])
+            vb2_remapped.set_field(Semantic.Blendindices, remap[indices])
 
             weights = vb2.get_field(Semantic.Blendweights)
             if weights is not None:
-                vb2_lod.set_field(Semantic.Blendweights, weights)
+                vb2_remapped.set_field(Semantic.Blendweights, weights)
 
-            self.buffers[f'Component{component_id}_VB2_LOD{lod_id+1}'] = vb2_lod
+            self.buffers[f'Component{component_id}_VB2_LOD{lod_level}'] = vb2_remapped
 
     def build_data_buffers(self, merged_object: MergedObject, component_id = -1):
         start_time = time.time()
@@ -223,7 +229,7 @@ class ModExporter:
         buffers_format: Dict[str, BufferLayout] = {}
         if self.extracted_object.export_format is not None and len(self.extracted_object.export_format) > 0:
             for buffer_name, buffer_layout in self.extracted_object.export_format.items():
-                buffers_format[buffer_name] = buffer_layout.get_layout()
+                buffers_format[buffer_name] = buffer_layout.to_layout()
 
         index_layout = None
         if merged_object.object is not None and len(merged_object.object.vertex_groups) > 256:
@@ -241,10 +247,16 @@ class ModExporter:
                 if not layout.semantics:
                     buffers_format[buffer_name] = layout
                 layout.add_element(BufferSemantic(buffer_semantic.abstract, buffer_semantic.format))
+
+        extracted_component = self.extracted_object.components[component_id]
+        for lod_id, lod in enumerate(extracted_component.lods):
+            if not lod.vb_formats:
+                continue
+            lod_level = lod_id + 1
+            for vb_name, vb_format in lod.vb_formats.items():
+                buffers_format[f"Component{component_id}_{vb_name}_LOD{lod_level}"] = vb_format.to_layout()
             
         if merged_object.object is not None:
-
-            rotation = (0, 0, 0) if not self.extracted_object.rotation else (-self.extracted_object.rotation.x, -self.extracted_object.rotation.y, -self.extracted_object.rotation.z)
 
             buffers, vertex_count = data_model.get_data(
                 context=self.context, 
@@ -253,7 +265,7 @@ class ModExporter:
                 excluded_buffers=self.excluded_buffers,
                 buffers_format=buffers_format,
                 mirror_mesh=self.cfg.mirror_mesh,
-                mesh_rotation=rotation,
+                mesh_rotation=self.extracted_object.rotation.to_tuple(),
                 object_index_layout=index_layout,
             )
             
