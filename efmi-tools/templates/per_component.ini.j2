@@ -164,25 +164,47 @@ run = CommandList\EFMIv1\OverrideTextures
 {%- if not component.cpu_posed %}
 {{note("Do by-slot resource overrides")}}
 ib = ref Resource_Component{{ component_id }}_IB
-vb0 = ref Resource_Component{{ component_id }}_VB0
-vb1 = ref Resource_Component{{ component_id }}_VB1
-{{note("Conditional VB2 (blends buffer) swap (with multiple LoD levels support)")}}
-{%- if 'Component'~component_id~'_VB2' in buffers.keys() %}
+{{note("Conditional vertex buffers swap (with multiple LoD levels support)")}}
 if $lod_level == 0
+    {{note("Contains vertex positions and TBN data")}}
+    vb0 = ref Resource_Component{{ component_id }}_VB0
+    {{note("Some shaders (e.g. wetness) are being supplied with differently mapped VB0 copy")}}
+    vb3 = ref Resource_Component{{ component_id }}_VB0
+    {%- if 'Component'~component_id~'_VB1' in buffers.keys() %}
+    {{note("Usually contains UV maps and vertex colors")}}
+    vb1 = ref Resource_Component{{ component_id }}_VB1
+    {%- endif %}
+    {%- if 'Component'~component_id~'_VB2' in buffers.keys() %}
     {{note("Use VB2 with weights for full model")}}
     vb2 = ref Resource_Component{{ component_id }}_VB2
+    {%- endif %}
 {%- for lod_id, lod in enumerate(component.lods) %}
 elif $lod_level == {{ lod_id + 1 }}
-    {%- if not lod.vg_map %}
-    {{note("Use VB2 with full model weights (LoD mesh uses full skeleton)")}}
-    vb2 = ref Resource_Component{{ component_id }}_VB2
+    {%- if "VB0" in lod.vb_formats %}
+    {{note("Use VB0 with LoD mesh layout")}}
+    vb0 = ref Resource_Component{{ component_id }}_VB0_LOD{{ lod_id + 1 }}
+    vb3 = ref Resource_Component{{ component_id }}_VB0_LOD{{ lod_id + 1 }}
     {%- else %}
-    {{note("Use VB2 with remapped weights (LoD mesh uses simplified skeleton)")}}
+    {{note("Use VB0 with full mesh layout")}}
+    vb0 = ref Resource_Component{{ component_id }}_VB0
+    vb3 = ref Resource_Component{{ component_id }}_VB0
+    {%- endif %}
+    {%- if "VB1" in lod.vb_formats %}
+    {{note("Use VB1 with LoD mesh layout")}}
+    vb1 = ref Resource_Component{{ component_id }}_VB1_LOD{{ lod_id + 1 }}
+    {%- elif 'Component'~component_id~'_VB1' in buffers.keys() %}
+    {{note("Use VB1 with full mesh layout")}}
+    vb1 = ref Resource_Component{{ component_id }}_VB1
+    {%- endif %}
+    {%- if "VB2" in lod.vb_formats or lod.vg_map %}
+    {{note("Use VB2 with LoD mesh layout and/or remapped weights (if LoD mesh uses simplified skeleton)")}}
     vb2 = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}
+    {%- elif 'Component'~component_id~'_VB2' in buffers.keys() %}
+    {{note("Use VB2 with full mesh layout and/or full model weights (if LoD mesh uses full skeleton)")}}
+    vb2 = ref Resource_Component{{ component_id }}_VB2
     {%- endif %}
 {%- endfor %}
 endif
-{%- endif %}
 {%- else %}
 ; Component is posed on CPU, vertex buffers modding not supported
 {%- endif %}
