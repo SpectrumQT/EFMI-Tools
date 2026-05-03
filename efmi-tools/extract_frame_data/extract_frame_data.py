@@ -63,7 +63,7 @@ def import_lods(
         if lod_component is None:
             continue
         try:
-            full_component.import_lod_metadata(lod_object.id, lod_component, vg_map)
+            full_component.import_lod_metadata(lod_object.id, lod_component, vg_map, cfg.allow_lod_overwrite)
         except DuplicateDataError as e:
             raise ConfigError('allow_lod_overwrite', dedent(f"""
                 {e}
