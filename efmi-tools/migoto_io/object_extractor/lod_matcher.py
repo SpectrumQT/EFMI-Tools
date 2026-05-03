@@ -132,6 +132,8 @@ class LODMatcher:
         lod_hashes = {}
         for full_component in full_object.components:
             for lod in full_component.metadata.lods:
+                if lod.ib_hash == full_component.metadata.ib_hash:
+                    continue
                 lod_hashes[lod.ib_hash] = lod.lod_object_name
 
         for lod_object in lod_candidate_objects:
