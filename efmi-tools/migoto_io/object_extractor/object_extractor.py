@@ -89,7 +89,7 @@ class ObjectExtractor:
 
         migoto_objects = migoto_object_builder.build(raw_objects)
 
-        print(f'Done building export objects in {time.time() - t:.2f}s.')
+        print(f'Done building {len(migoto_objects)} export objects in {time.time() - t:.2f}s.')
 
         return migoto_objects
 
@@ -103,6 +103,7 @@ class ObjectExtractor:
         object_exporter = ObjectExporter()
 
         for migoto_object in migoto_objects:
+            print(f"Writing {migoto_object.id}...")
             object_output_path = output_path / migoto_object.id
 
             textures_descriptor = TexturesDescriptor.from_migoto_object(migoto_object, texture_filter)
