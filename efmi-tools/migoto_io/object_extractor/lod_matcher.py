@@ -108,6 +108,12 @@ class LODMatcher:
         matched_components: dict[MigotoComponent, MigotoComponent] = (
             hash_matched_components | geo_matched_components
         )
+            
+        for lod_component in lod_object.components:
+            if lod_component.metadata.mesh_name.startswith("Skipped"):
+                continue
+            if lod_component not in matched_components:
+                lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (no matching full component found)"
 
         print(f'Meshes match time: {time.time()-t:.2f}s')
 
@@ -219,6 +225,8 @@ class LODMatcher:
 
                 similarity = self.geo_matcher.calculate_similarity(full_component.mesh, lod_component.mesh)
 
+                lod_component.metadata.mesh_name = self.make_matched_mesh_name(full_component, lod_component, "hash")
+
                 print(f"Match by hash (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")
 
             if matches:
@@ -326,22 +334,35 @@ class LODMatcher:
         similarity_graph = self.calculate_similarity_graph(full_components, lod_components)
 
         return similarity_graph
+    
+    def make_matched_mesh_name(self, full_component: MigotoComponent, lod_component: MigotoComponent, similarity: float | str) -> str:
+        match_type = f"{similarity:.2f}%" if isinstance(similarity, float) else similarity
+        mesh_name = f"{full_component.metadata.mesh_name} full={full_component.metadata.ib_hash} lod={lod_component.metadata.ib_hash} match={match_type}"
+        if lod_component.metadata.ib_hash == full_component.metadata.ib_hash:
+            if lod_component.metadata.vg_map:
+                mesh_name += f" (full mesh, full skeleton)"
+            else:
+                mesh_name += f" (full mesh, simplified skeleton)"
+        else:
+            mesh_name += f" (simplified mesh and skeleton)"
+        return mesh_name
 
     def get_best_matching_components(self, similarity_graph: SimilarityGraph) -> dict[MigotoComponent, MigotoComponent]:
         result = {}
         for lod_component, similarities in similarity_graph.data.items():
             full_component, similarity = next(iter(similarities.items()))
+
             if similarity < self.object_similarity_threshold:
                 if self.skip_components_below_similarity_threshold:
                     print(f"Skipped match by geometry below {self.object_similarity_threshold:.2f}% threshold (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")
                     lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (mesh similarity {similarity:.2f}% is below configured {self.object_similarity_threshold:.2f}% threshold)"
                     continue
                 raise ComponentLowSimilarityError(f"Best matching LoD for {full_component.metadata.mesh_name} has {similarity:.2f}% similarity!")
+            
+            lod_component.metadata.mesh_name = self.make_matched_mesh_name(full_component, lod_component, similarity)
+            
             result[lod_component] = full_component
+
             print(f"Match by geometry (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")
+
         return result
-
-
-
-
-

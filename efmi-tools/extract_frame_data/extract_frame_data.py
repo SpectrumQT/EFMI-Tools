@@ -82,28 +82,9 @@ def import_lods(
         lod_level = max([lod_id for lod_id, lod in enumerate(full_object.metadata.components[0].lods)]) + 1
         collection_name = f"{full_object.id} LOD{lod_level}: {lod_object.id}"
 
-        for full_component in full_object.components:
-            (lod_component, _) = matched_components.get(full_component, (None, None))
-            if lod_component is None:
-                continue
-            mesh_name = f"{full_component.metadata.mesh_name} full={full_component.metadata.ib_hash} lod={lod_component.metadata.ib_hash}"
-            if lod_component.metadata.ib_hash == full_component.metadata.ib_hash:
-                if lod_component.metadata.vg_map:
-                    mesh_name += f" (full mesh, full skeleton)"
-                else:
-                    mesh_name += f" (full mesh, simplified skeleton)"
-            else:
-                mesh_name += f" (simplified mesh and skeleton)"
-            lod_component.metadata.mesh_name = mesh_name
-
         print("Non-matched components:")
-        matched_lod_components = [lod_component for lod_component, _ in matched_components.values() if lod_component]
         for lod_component in lod_object.components:
             if lod_component.metadata.mesh_name.startswith("Skipped"):
-                print(lod_component.metadata.mesh_name)
-                continue
-            if lod_component not in matched_lod_components:
-                lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (no matching full component found)"
                 print(lod_component.metadata.mesh_name)
 
         print(f"Importing object {lod_object.id} to Blender...")
