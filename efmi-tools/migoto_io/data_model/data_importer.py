@@ -36,8 +36,8 @@ class BlenderDataImporter:
         for buffer_semantic in vertex_buffer.layout.semantics:
             semantic = buffer_semantic.abstract.enum
 
-            # Skip tangents import, we'll recalc them on export
-            if semantic in [Semantic.Tangent, Semantic.BitangentSign]:
+            # Skip unknown data or tangents import (tangents are recalculated on export)
+            if semantic in [Semantic.Unknown, Semantic.Tangent, Semantic.BitangentSign]:
                 continue
             
             # Get converted data from vertex buffer

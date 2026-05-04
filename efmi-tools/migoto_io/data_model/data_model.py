@@ -76,8 +76,8 @@ class DataModel:
             self._insert_converter(semantic_converters, AbstractSemantic(Semantic.Index), self.converter_rgb_to_bgr_vector)
 
         for semantic in vertex_buffer.layout.semantics:
-            # Skip tangents import, we'll recalc them on export
-            if semantic.abstract.enum in [Semantic.Tangent, Semantic.BitangentSign]:
+            # Skip unknown data or tangents import (tangents are recalculated on export)
+            if semantic.abstract.enum in [Semantic.Unknown, Semantic.Tangent, Semantic.BitangentSign]:
                 continue
             # Modify directional (vector-based) semantics
             if semantic.abstract.enum in [Semantic.Position, Semantic.ShapeKey, Semantic.Normal]:
@@ -166,7 +166,7 @@ class DataModel:
             if buffer_name in excluded_buffers:
                 continue
             for semantic in buffer_layout.semantics:
-                if semantic.abstract.enum in (Semantic.ShapeKey, Semantic.RawData):
+                if semantic.abstract.enum in (Semantic.ShapeKey, Semantic.RawData, Semantic.Unknown):
                     continue
                 if semantic.abstract.enum == Semantic.Index:
                     data = index_data
@@ -257,7 +257,7 @@ class DataModel:
             for semantic in buffer_layout.semantics:
                 if exclude_buffer and semantic.abstract.enum not in self.data_extractor.blender_loop_semantics:
                     continue
-                if semantic.abstract.enum in [Semantic.ShapeKey, Semantic.RawData]:
+                if semantic.abstract.enum in [Semantic.ShapeKey, Semantic.RawData, Semantic.Unknown]:
                     continue
                 export_layout.add_element(semantic)
 

@@ -333,7 +333,41 @@ class BufferLayout:
                 filtered_semantics.append(semantic)
         self.semantics = filtered_semantics
 
-    def fill_missing_semantics(self) -> list[BufferSemantic] | None:
+    @staticmethod
+    def predict_dxgi_formats(byte_width: int) -> list[DXGIFormat]:
+        formats = []
+
+        # Consume 16-byte blocks as R32G32B32A32_UINT
+        while byte_width >= 16:
+            formats.append(DXGIFormat.R32G32B32A32_UINT)
+            byte_width -= 16
+
+        # Consume 12-byte block as R32G32B32_UINT
+        if byte_width >= 12:
+            formats.append(DXGIFormat.R32G32B32_UINT)
+            byte_width -= 12
+            
+        # Consume 8-byte block as R32G32_UINT
+        if byte_width >= 8:
+            formats.append(DXGIFormat.R32G32_UINT)
+            byte_width -= 8
+
+        # Consume 4-byte block as R8G8B8A8_UINT
+        if byte_width >= 4:
+            formats.append(DXGIFormat.R8G8B8A8_UINT)
+            byte_width -= 4
+            
+        # Consume remainder as composed 8-bit UINT
+        if byte_width == 3:
+            formats.append(DXGIFormat.R8G8B8_UINT)
+        elif byte_width == 2:
+            formats.append(DXGIFormat.R8G8_UINT)
+        elif byte_width == 1:
+            formats.append(DXGIFormat.R8_UINT)
+
+        return formats
+
+    def fill_missing_semantics(self, semantic_index_offset: int = 0) -> list[BufferSemantic] | None:
         semantics_stride = self.calculate_stride()
         if self.stride <= semantics_stride:
             return None
@@ -350,24 +384,32 @@ class BufferLayout:
         filled_semantics = []
         unknown_semantics = []
         current_offset = 0
-        unknown_index = 0
+        unknown_index = semantic_index_offset
 
         for i in range(len(self.semantics) + 1):
             semantic = self.semantics[i] if i < len(self.semantics) else None
             next_offset = semantic.offset if semantic else self.stride
 
             if next_offset > current_offset:
-                unknown_semantic = BufferSemantic(
-                    AbstractSemantic(Semantic.Unknown, unknown_index),
-                    format=DXGIFormat.R8_UINT,
-                )
-                unknown_semantic.offset = current_offset
-                unknown_semantic.stride = next_offset - current_offset
-                unknown_semantic.input_slot = input_slot
+                unknown_stride = next_offset - current_offset
 
-                filled_semantics.append(unknown_semantic)
-                unknown_semantics.append(unknown_semantic)
-                unknown_index += 1
+                predicted_formats = self.predict_dxgi_formats(unknown_stride)
+
+                for predicted_format in predicted_formats:
+
+                    unknown_semantic = BufferSemantic(
+                        AbstractSemantic(Semantic.Unknown, unknown_index),
+                        format=predicted_format,
+                    )
+                    unknown_semantic.offset = current_offset
+                    unknown_semantic.stride = predicted_format.byte_width
+                    unknown_semantic.input_slot = input_slot
+
+                    filled_semantics.append(unknown_semantic)
+                    unknown_semantics.append(unknown_semantic)
+
+                    unknown_index += 1
+                    current_offset += predicted_format.byte_width
 
             if semantic:
                 filled_semantics.append(semantic)

@@ -105,6 +105,8 @@ class MigotoObjectBuilder:
         component_vb_data: dict[AbstractSemantic, SemanticVertexData] = {}
         component_vb_data_usage: dict[tuple[str, int], SemanticVertexData] = {}
 
+        unknown_semantic_index_offset = 0
+
         for shader_call in raw_component.shader_calls:
 
             for resource_slot, resource in shader_call.resources.vertex_buffers.items():
@@ -127,8 +129,9 @@ class MigotoObjectBuilder:
                 )
                 vb_layout.stride = resource.migoto_format.stride
 
+                ib_hash = next(iter(shader_call.resources.index_buffer.values())).hash
+
                 if vb_layout.stride == 0:
-                    ib_hash = next(iter(shader_call.resources.index_buffer.values())).hash
                     print(f"WARNING! [{resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{resource_slot.slot_id}={resource.hash}]: Skipped VB with zero-stride layout: {vb_layout}")
                     continue
 
@@ -138,11 +141,17 @@ class MigotoObjectBuilder:
                 if self.semantic_remap:
                     remapped_semantics = vb_layout.remap_semantics(self.semantic_remap)
                     for (map_from_semantic, map_to_semantic) in remapped_semantics:
-                        ib_hash = next(iter(shader_call.resources.index_buffer.values())).hash
                         if self.verbose_logging:
                             print(f"[{resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{resource_slot.slot_id}={resource.hash}]: Remapped {map_from_semantic} to {map_to_semantic}")
 
                 vb_layout.dedupe_semantics()
+
+                # Layout sent to InputAssembler can have gaps (byte strides of unknown semantics).
+                missing_semantics = vb_layout.fill_missing_semantics(unknown_semantic_index_offset)
+                if missing_semantics:
+                    unknown_semantic_index_offset += len(missing_semantics)
+                    if self.verbose_logging:
+                        print(f"[{resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{resource_slot.slot_id}={resource.hash}]: Filled missing semantics: {vb_layout}")
 
                 for buffer_semantic in vb_layout.semantics:
                     vb_data = component_vb_data.get(buffer_semantic.abstract, None)
@@ -150,21 +159,54 @@ class MigotoObjectBuilder:
                     # Ensure consistent buffer semantic for current buffer region across component's draw calls
                     # If same resource pointer + semantic byte offset is mapped differently, semantic_remap must be used
                     sematic_key = (resource.hash, buffer_semantic.offset)
+                    
+                    # Here we track how semantic for current sematic_key was previously defined
                     vb_data_usage = component_vb_data_usage.get(sematic_key, None)
+                    
                     if vb_data_usage is not None:
+                        
                         try:
+                            sematic_key_defines_unknown = vb_data_usage.semantic.abstract.enum == Semantic.Unknown
+                            buffer_semantic_defines_unknown = buffer_semantic.abstract.enum == Semantic.Unknown
+
+                            if sematic_key_defines_unknown:
+                                # Semantic for current sematic_key was previously defined as unknown
+                                if buffer_semantic_defines_unknown:
+                                    # Current VB draw also defines semantic as unknown
+                                    # Skip processing this buffer_semantic entirely, since we won't get anything new
+                                    continue
+                                else:
+                                    # Current VB draw defines semantic that was previously unknown
+                                    # Remove this abstract semantic (e.g. UNKNOWN_0) from consistency tracking
+                                    print(f"Identified {vb_data_usage.semantic} as {buffer_semantic}")
+                                    del component_vb_data[vb_data_usage.semantic.abstract]
+                            else:
+                                # Semantic for current sematic_key is already known, lets handle re-definition attempt
+                                if buffer_semantic_defines_unknown:
+                                    # Current VB draw defines semantic as unknown, but we've already found proper definiton
+                                    # Skip processing this buffer_semantic entirely, since we won't get anything new from it
+                                    continue
+                                else:
+                                    # Current VB draw defines semantic that is already known
+                                    # Do nothing and let the consistency checks below handle the rest
+                                    pass
+
                             if buffer_semantic.abstract != vb_data_usage.semantic.abstract:
+                                # Current VB draw re-defines semantic for current sematic_key as different semantic
                                 raise ValueError(dedent(f"""
                                     Ambiguous buffer semantics across draw calls (missing remap): 
                                     - [{vb_data_usage.resource.usage_descriptor.call_id:06d}]: {vb_data_usage.semantic} (layout: {vb_data_usage.layout})
                                     - [{resource.usage_descriptor.call_id:06d}]: {buffer_semantic} (layout: {vb_layout})
                                 """))
+                            
                             if buffer_semantic.stride != vb_data_usage.semantic.stride:
+                                # Current VB draw re-defines semantic stride for current sematic_key
                                 raise ValueError(dedent(f"""
                                     Inconsistent buffer semantics stride across draw calls:
                                     - [{vb_data.resource.usage_descriptor.call_id:06d}]: {vb_data_usage.semantic} (layout: {vb_data_usage.layout})
                                     - [{resource.usage_descriptor.call_id:06d}]: {buffer_semantic} (layout: {vb_layout})
                                 """))
+                            
                         except Exception as e:
                             print("WARNING! " + str(e).strip())
                             print(f"Solved conflict by selecting first seen semantic {vb_data_usage.semantic}.")
@@ -239,11 +281,6 @@ class MigotoObjectBuilder:
                 if migoto_format.vertex_count != raw_component.vertex_count:
                     migoto_format.first_vertex = raw_component.vertex_offset
                     migoto_format.vertex_count = raw_component.vertex_count
-
-                # Layout sent to InputAssembler can have gaps (byte strides of unknown semantics).
-                missing_semantics = migoto_format.vb_layout.fill_missing_semantics()
-                if self.verbose_logging and missing_semantics:
-                    print(f"[{vb_data.resource.usage_descriptor.call_id:06d}][VB{vb_data.semantic.input_slot}={vb_data.resource.hash}]: Filled missing semantics: {migoto_format.vb_layout}")
 
                 # Load VB data to memory.
                 vb_data.resource.build_numpy_buffer(migoto_format=migoto_format)
