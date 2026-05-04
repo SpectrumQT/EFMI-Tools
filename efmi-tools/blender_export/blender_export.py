@@ -1,6 +1,8 @@
 import time
 import shutil
 
+from dataclasses import asdict
+
 from ..addon.exceptions import ConfigError
 
 from ..migoto_io.blender_interface.utility import *
@@ -9,7 +11,7 @@ from ..migoto_io.data_model.byte_buffer import NumpyBuffer, BufferLayout, Buffer
 from ..migoto_io.data_model.data_model import DataModel
 from ..migoto_io.migoto_model.migoto_format import MigotoFmt
 
-from ..migoto_io.object_extractor.migoto_object.metadata_format import read_metadata, ExtractedObject
+from ..migoto_io.object_extractor.migoto_object.metadata_format import read_metadata, ExtractedObject, ExtractedObjectBuffer, EnumEncoder
 
 from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeys
 from .metadata_collector import Version, ModInfo
@@ -330,10 +332,18 @@ class ModExporter:
     def write_files(self):
         start_time = time.time()
 
+        layouts = {}
+
         for buffer_name, buffer in self.buffers.items():
             print(f'Writing {buffer_name}.buf...')
             with open(self.meshes_path / f'{buffer_name}.buf', 'wb') as f:
                 f.write(buffer.get_bytes())
+            layouts[buffer_name] = asdict(ExtractedObjectBuffer.from_buffer_layout(buffer.layout))
+
+        if layouts:
+            print(f'Writing Components.buf...')
+            with open(self.meshes_path / f'Components.buf', 'w') as f:
+                f.write(json.dumps(layouts, indent=4, cls=EnumEncoder))
 
         if not self.cfg.partial_export:
             # Write textures
