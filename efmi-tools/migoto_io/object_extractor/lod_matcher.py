@@ -67,6 +67,7 @@ class LODMatcher:
 
     object_similarity_threshold: float
     component_similarity_threshold: float
+    skip_components_below_similarity_threshold: bool
 
     geo_matcher_main_config: GeometryMatcherConfig
 
@@ -331,6 +332,10 @@ class LODMatcher:
         for lod_component, similarities in similarity_graph.data.items():
             full_component, similarity = next(iter(similarities.items()))
             if similarity < self.object_similarity_threshold:
+                if self.skip_components_below_similarity_threshold:
+                    print(f"Skipped match by geometry below {self.object_similarity_threshold:.2f}% threshold (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")
+                    lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (mesh similarity {similarity:.2f}% is below configured {self.object_similarity_threshold:.2f}% threshold)"
+                    continue
                 raise ComponentLowSimilarityError(f"Best matching LoD for {full_component.metadata.mesh_name} has {similarity:.2f}% similarity!")
             result[lod_component] = full_component
             print(f"Match by geometry (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")

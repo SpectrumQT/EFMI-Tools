@@ -31,6 +31,7 @@ def match_lods(
         component_hash_blacklist=cfg.skip_component_hashes if cfg.skip_component_hashes_enabled else "",
         object_similarity_threshold=error_threshold,
         component_similarity_threshold=error_threshold,
+        skip_components_below_similarity_threshold=cfg.skip_lods_below_error_threshold,
         geo_matcher_main_config=GeometryMatcherConfig(
             method=GeometryMatcherMethod(cfg.geo_matcher_method),
             sensitivity=cfg.geo_matcher_sensivity,
@@ -169,9 +170,10 @@ def extract_frame_data(context, cfg, extract_lods=False):
             ObjectLowSimilarityError,
             ComponentLowSimilarityError,
         ) as e:
+            error_threshold = cfg.geo_matcher_voxel_error_threshold if cfg.geo_matcher_method == 'VOXEL' else cfg.geo_matcher_error_threshold
             raise ConfigError('geo_matcher_error_threshold', dedent(f"""
                 {e}
-                It is below configured {cfg.skip_lods_below_error_threshold:.2f}% Geometry Matcher Error Threshold.
+                It is below configured {error_threshold:.2f}% Geometry Matcher Error Threshold.
                 If it's not too far off, try to lower threshold. Otherwise either dump is missing some data or search engine fails to handle it.
             """))
 
