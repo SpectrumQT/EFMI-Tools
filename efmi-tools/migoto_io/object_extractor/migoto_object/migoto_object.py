@@ -99,7 +99,7 @@ class MigotoObject:
     def build_metadata(self):
         is_weighted = any(component.mesh.get_weighting_type() != WeightingType.NoWeights for component in self.components)
         has_vertex_offset = any(component.raw_data.vertex_offset != 0 for component in self.components)
-        if has_vertex_offset or not is_weighted:
+        if (has_vertex_offset or not is_weighted) and not self.id.startswith("Character"):
             rotation = ObjectRotation(90, 0, 0)
         else:
             rotation = ObjectRotation(0, 0, 0)
