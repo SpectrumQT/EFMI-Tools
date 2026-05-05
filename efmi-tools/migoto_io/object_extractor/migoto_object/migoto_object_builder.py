@@ -209,7 +209,7 @@ class MigotoObjectBuilder:
                             
                         except Exception as e:
                             print("WARNING! " + str(e).strip())
-                            print(f"Solved conflict by selecting first seen semantic {vb_data_usage.semantic}.")
+                            print(f"Suppressed the conflict by selecting first seen semantic {vb_data_usage.semantic} (may cause glitches).")
                             continue
 
                     if vb_data is None:
@@ -220,36 +220,31 @@ class MigotoObjectBuilder:
                             # Fetch numpy data for current abstract semantic from VB of previous draw
                             vb_data_migoto_format = copy.deepcopy(vb_data.resource.migoto_format)
                             vb_data_migoto_format.vb_layout = vb_data.layout
-                            vb_data_migoto_format.vb_layout.fill_missing_semantics()
                             vb_data.resource.build_numpy_buffer(migoto_format=vb_data_migoto_format)
                             vb_data_semantic_data = vb_data.resource.buffer.get_field(buffer_semantic.abstract)
 
                             # Fetch numpy data for current abstract semantic from VB of current draw
                             migoto_format = copy.deepcopy(resource.migoto_format)
                             migoto_format.vb_layout = vb_layout
-                            migoto_format.vb_layout.fill_missing_semantics()
                             resource.build_numpy_buffer(migoto_format=migoto_format)
                             resource_semantic_data = resource.buffer.get_field(vb_data.semantic.abstract)
 
                             # Semantic data mismatch means that game defines different entities using the same semantic
                             if not numpy.array_equal(vb_data_semantic_data, resource_semantic_data):
-
-                                ib_hash = next(iter(shader_call.resources.index_buffer.values())).hash
-
-                                if buffer_semantic.abstract in [AbstractSemantic(Semantic.Blendindices), AbstractSemantic(Semantic.Blendweights)]:
-                                    print(f"WARNING! [IB={ib_hash}]: {buffer_semantic.abstract} data mismatch: {vb_data.resource.usage_descriptor.call_id:06d}=VB{vb_data.semantic.input_slot}={vb_data.resource.hash} vs {resource.usage_descriptor.call_id:06d}=VB{buffer_semantic.input_slot}={resource.hash}")
+                                # if buffer_semantic.abstract in [AbstractSemantic(Semantic.Blendindices, 0), AbstractSemantic(Semantic.Blendweights, 0)]:
+                                #     print(f"WARNING! [IB={ib_hash}]: {buffer_semantic.abstract} data mismatch: {vb_data.resource.usage_descriptor.call_id:06d}=VB{vb_data.semantic.input_slot}={vb_data.resource.hash} vs {resource.usage_descriptor.call_id:06d}=VB{buffer_semantic.input_slot}={resource.hash}")
                                 # if buffer_semantic.abstract == AbstractSemantic(Semantic.Blendindices):
                                 #     buffer_semantic.abstract = AbstractSemantic(Semantic.Blendindices, 1)
                                 #     component_vb_data[buffer_semantic.abstract] = SemanticVertexData(buffer_semantic, vb_layout, resource)
                                 # elif buffer_semantic.abstract == AbstractSemantic(Semantic.Blendweights):
                                 #     buffer_semantic.abstract = AbstractSemantic(Semantic.Blendweights, 1)
                                 #     component_vb_data[buffer_semantic.abstract] = SemanticVertexData(buffer_semantic, vb_layout, resource)
-                                else:
-                                    raise ValueError(dedent(f"""
-                                        Inconsistent data for VB{buffer_semantic.input_slot} semantic {buffer_semantic.abstract} across draw calls (missing remap?): 
-                                        - [{vb_data.resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{vb_data.semantic.input_slot}={vb_data.resource.hash}]: {vb_data.layout}
-                                        - [{resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{buffer_semantic.input_slot}={resource.hash}]: {vb_layout}
-                                    """))
+                                print(dedent(f"""
+                                    WARNING! Inconsistent data for VB{buffer_semantic.input_slot} semantic {buffer_semantic.abstract} across draw calls (missing remap?): 
+                                    - [{vb_data.resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{vb_data.semantic.input_slot}={vb_data.resource.hash}]: {vb_data.layout}
+                                    - [{resource.usage_descriptor.call_id:06d}][IB={ib_hash}][VB{buffer_semantic.input_slot}={resource.hash}]: {vb_layout}
+                                """))
+                                print(f"Suppressed the conflict by selecting first seen VB{vb_data.semantic.input_slot}={vb_data.resource.hash} (may cause glitches).")
 
         return list(component_vb_data.values())
 
