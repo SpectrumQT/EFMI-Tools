@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'libs'))
 
 bl_info = {
     "name": "EFMI Tools",
-    "version": (0, 4, 1),
+    "version": (0, 4, 2),
     "efmi_version": (1, 2, 3),
     "blender": (3, 6, 0),
     "author": "SpectrumQT, LeoTorreZ, SinsOfSeven, SilentNightSound, DarkStarSword",
