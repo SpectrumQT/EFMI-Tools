@@ -11,17 +11,13 @@
   <a href="#license">License</a>
 </p>
 
-## Announcements
-
-- As of now, **EFMI Tools** is **incompatible** with the lastest changes to **XXMI DLL**, **EFMI** and **Endfield** data itself. Update will come in few days, in a meantime use old dumps and fix exported mods with **Gustav0**'s [hash fix script](https://gamebanana.com/tools/22185).
-
 ## Disaclaimers
 
-- It is **first public alpha version** of the toolkit that bundles experimental code from early research. Some things may and will not function as expected.
+- **EFMI Tools** is in **alpha** stage of development. Feature set is a subject to change, and some characters are not fully compatible out of box.
 
 ## Known Issues
 
-- Brows of some characters are skipped on extraction/import/export stages. There are some unresolved issues with VB0 data used for them.
+- **Snowshine** LOD1 has misplaced body (matching LoD mesh has different pivot point).
 
 ## Features
 
@@ -33,6 +29,7 @@
 
 ## Planned Features
 - **Bones Merging** — Automatic VG lists merging and deduping 
+- **Custom Shapekeys** — Shapekeys export support with INI-based control 
 
 ## How To Use
 
