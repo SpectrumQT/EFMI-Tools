@@ -117,6 +117,7 @@ class ObjectRotation:
 
 @dataclass
 class ExtractedObject:
+    format_version: int
     ib_hash: str
     vb0_hash: str
     vertex_count: int
@@ -128,11 +129,18 @@ class ExtractedObject:
 
     def __post_init__(self):
         if self.rotation is None:
+            if self.format_version is None:
+                self.format_version = 1
             self.rotation = ObjectRotation()
 
         for component_id, component in enumerate(self.components):
             if component.mesh_name is None:
+                if self.format_version is None:
+                    self.format_version = 2
                 component.mesh_name = f"Component {component_id}"
+
+        if self.format_version is None:
+            self.format_version = 3
 
     def as_json(self):
         return json.dumps(asdict(self), indent=4, cls=EnumEncoder)

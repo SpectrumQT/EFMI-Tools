@@ -108,6 +108,7 @@ class MigotoObject:
             component.build_metadata(f"Component {component_id}")
 
         self.metadata = ExtractedObject(
+            format_version=None,
             ib_hash=None,
             vb0_hash=None,
             vertex_count=sum([component.mesh.format.vertex_count for component in self.components]),

@@ -88,6 +88,13 @@ class ModExporter:
             raise ConfigError('object_source_folder', 'Specified folder is missing Metadata.json!')
         except Exception as e:
             raise ConfigError('object_source_folder', f'Failed to load Metadata.json:\n{e}')
+            
+        if self.extracted_object.format_version < 3:
+            raise ConfigError('object_source_folder', f"""
+                Specified sources folder uses outdated data format `v{self.extracted_object.format_version}`!
+                When used for mod export, it will not work correctly.
+                Please extract data again from a new frame dump.
+            """)
         
         lods_count = sum([len(component.lods) for component in self.extracted_object.components])
         if lods_count == 0 and not self.cfg.allow_export_without_lods:

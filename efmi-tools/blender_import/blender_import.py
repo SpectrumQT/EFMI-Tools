@@ -1,5 +1,7 @@
 import time
 
+from textwrap import dedent
+
 from ..addon.exceptions import ConfigError
 
 from ..migoto_io.blender_interface.utility import *
@@ -22,6 +24,14 @@ def import_object(
 ):
     model = DataModelEFMI()
     model.legacy_vertex_colors = cfg.color_storage == 'LEGACY'
+
+    if migoto_object.metadata.format_version < 3:
+        cfg.last_error_setting_name = "object_source_folder"
+        cfg.last_error_text = dedent(f"""
+            Specified sources folder uses outdated data format `v{migoto_object.metadata.format_version}`!
+            When used for mod export, it will not work correctly.
+            Please extract data again from a new frame dump.
+        """).strip()
 
     imported_objects = []
 
