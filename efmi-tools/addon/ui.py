@@ -431,6 +431,8 @@ class EFMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
             layout.row().prop(cfg, 'add_missing_vertex_groups')
             layout.row().prop(cfg, 'fill_missing_mesh_data')
             layout.row().prop(cfg, 'allow_export_without_lods')
+            layout.row().prop(cfg, 'fallback_collection_naming')
+            layout.row().prop(cfg, 'indexed_vg_naming')
             # layout.row().prop(cfg, 'unrestricted_custom_shape_keys')
             if cfg.mod_skeleton_type == 'MERGED':
                 layout.row().prop(cfg, 'skeleton_scale')
