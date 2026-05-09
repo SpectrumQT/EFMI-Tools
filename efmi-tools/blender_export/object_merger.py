@@ -146,7 +146,11 @@ class ObjectMerger:
             
             if not self.force_object_name:
                 match = component_pattern.findall(obj.name.lower())
-                if len(match) == 0:
+                if not match and getattr(self.context.scene.efmi_tools_settings, 'fallback_collection_naming', False):
+                    for col in obj.users_collection:
+                        match = component_pattern.findall(col.name.lower())
+                        if match: break
+                if not match:
                     continue
                 component_id = int(match[0])
             elif self.force_object_name == obj.name:
@@ -204,14 +208,25 @@ class ObjectMerger:
         pass
 
     def finalize_temp_objects_data(self):
+        use_indexed_vgs = getattr(self.context.scene.efmi_tools_settings, 'indexed_vg_naming', False)
         for component_id, component in enumerate(self.components):
             for temp_object in component.objects:
                 temp_obj = temp_object.object
                 # Handle Vertex Groups
                 vertex_groups = get_vertex_groups(temp_obj)
+                
+                if use_indexed_vgs:
+                    for vg in vertex_groups:
+                        if 'ignore' not in vg.name.lower():
+                            vg.name = str(vg.index)
+                    vertex_groups = get_vertex_groups(temp_obj)
+                    
                 # Fill gaps in Vertex Groups list based on VG names (i.e. add group '1' between '0' and '2' if it's missing)
                 if self.add_missing_vertex_groups:
                     fill_gaps_in_vertex_groups(self.context, temp_obj, internal_call=True)
+                    if use_indexed_vgs:
+                        vertex_groups = get_vertex_groups(temp_obj)
+                        
                 # Remove ignored or unexpected vertex groups
                 if self.skeleton_type == SkeletonType.Merged:
                     # Exclude VGs with 'ignore' tag or with higher VG id than total VG count from Metadata.ini
@@ -220,12 +235,16 @@ class ObjectMerger:
                 elif self.skeleton_type == SkeletonType.PerComponent:
                     # Exclude VGs with 'ignore' tag or with higher id VG count from Metadata.ini for current component
                     extracted_component = self.extracted_object.components[component_id]
-                    max_id = max(
-                        int(vg.name)
-                        for vg in temp_obj.vertex_groups
-                        if vg.name.isdigit()
-                    ) if temp_obj.vertex_groups else -1
-                    total_vg_count = max_id + 1
+                    if use_indexed_vgs:
+                        valid_vgs = [vg for vg in vertex_groups if 'ignore' not in vg.name.lower()]
+                        total_vg_count = (max(vg.index for vg in valid_vgs) + 1) if valid_vgs else 0
+                    else:
+                        max_id = max(
+                            int(vg.name)
+                            for vg in temp_obj.vertex_groups
+                            if vg.name.isdigit()
+                        ) if temp_obj.vertex_groups else -1
+                        total_vg_count = max_id + 1
                     # total_vg_count = len(extracted_component.vg_map)
                     ignore_list = [vg for vg in vertex_groups if 'ignore' in vg.name.lower() or vg.index >= total_vg_count]
                 remove_vertex_groups(temp_obj, ignore_list)

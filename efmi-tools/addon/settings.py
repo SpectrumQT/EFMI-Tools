@@ -484,6 +484,18 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=True,
     ) # type: ignore
 
+    fallback_collection_naming: BoolProperty(
+        name="Fallback Collection Naming",
+        description="If object name doesn't specify component id, check its parent collections",
+        default=False,
+    ) # type: ignore
+
+    indexed_vg_naming: BoolProperty(
+        name="Indexed VG Naming",
+        description="Rename Vertex Groups to their indices before gap filling. Ensures correct order for non-numeric VG names",
+        default=False,
+    ) # type: ignore
+
     unrestricted_custom_shape_keys: BoolProperty(
         name="Unrestricted Custom Shape Keys",
         description="Allows to use Custom Shape Keys for components that don't have them by default. Generates extra mod.ini logic",
