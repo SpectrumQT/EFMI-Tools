@@ -162,14 +162,24 @@ endif
 {{note("If hash of resource in slot matches TextureOverride hash, TextureOverride puts defined custom texture Resource in `this` slot")}}
 run = CommandList\EFMIv1\OverrideTextures
 {%- if not component.cpu_posed %}
+{%- if merged_object.components[component_id].shapekeys.vertex_count > 0 %}
+{{note("Process pending component shapekeyes update (apply morphs to vertex positions data)")}}
+run = CommandList_UpdateShapeKeys_Component{{ component_id }}
+{%- endif %}
 {{note("Do by-slot resource overrides")}}
 ib = ref Resource_Component{{ component_id }}_IB
 {{note("Conditional vertex buffers swap (with multiple LoD levels support)")}}
 if $lod_level == 0
+    {%- if merged_object.components[component_id].shapekeys.vertex_count == 0 %}
     {{note("Contains vertex positions and TBN data")}}
     vb0 = ref Resource_Component{{ component_id }}_VB0
     {{note("Some shaders (e.g. wetness) are being supplied with differently mapped VB0 copy")}}
     vb3 = ref Resource_Component{{ component_id }}_VB0
+    {%- else %}
+    {{note("Use VB0 for current UID from shapekeyed positions pool")}}
+    vb0 = ref Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid]
+    vb3 = ref Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid]
+    {%- endif %}
     {%- if 'Component'~component_id~'_VB1' in buffers.keys() %}
     {{note("Usually contains UV maps and vertex colors")}}
     vb1 = ref Resource_Component{{ component_id }}_VB1
@@ -180,6 +190,7 @@ if $lod_level == 0
     {%- endif %}
 {%- for lod_id, lod in enumerate(component.lods) %}
 elif $lod_level == {{ lod_id + 1 }}
+    {%- if merged_object.components[component_id].shapekeys.vertex_count == 0 %}
     {%- if "VB0" in lod.vb_formats %}
     {{note("Use VB0 with LoD mesh layout")}}
     vb0 = ref Resource_Component{{ component_id }}_VB0_LOD{{ lod_id + 1 }}
@@ -188,6 +199,11 @@ elif $lod_level == {{ lod_id + 1 }}
     {{note("Use VB0 with full mesh layout")}}
     vb0 = ref Resource_Component{{ component_id }}_VB0
     vb3 = ref Resource_Component{{ component_id }}_VB0
+    {%- endif %}
+    {%- else %}
+    {{note("Use VB0 for current UID from shapekeyed positions pool")}}
+    vb0 = ref Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid]
+    vb3 = ref Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid]
     {%- endif %}
     {%- if "VB1" in lod.vb_formats %}
     {{note("Use VB1 with LoD mesh layout")}}
@@ -304,13 +320,281 @@ if $object_detected
 endif
 {%- endfor %}
 
+{%- if merged_object.shapekeys.max_batches_count > 0 %}
+
+; Shape Keys: Initialization -------------------------
+
+[Constants]
+global $position_instance_count = {{ merged_object.shapekeys.max_lod_position_count + 1 }}
+global $shapekeyed_comp_max_batches = {{ merged_object.shapekeys.max_batches_count }}
+global $shapekeyed_comp_max_vertices = {{ merged_object.shapekeys.max_vertex_count }}
+global $shapekeyed_components_count = {{ merged_object.shapekeys.shapekeyed_components_count }}
+global $shapekeyed_positions_count = {{ merged_object.shapekeys.shapekeyed_components_count * (merged_object.shapekeys.max_lod_position_count + 1) }}
+
+global $component_id = 0
+global $shapekey_id = 0
+global $shapekey_value = 0
+
+global $shapekeyed_position_uid = 0
+global $component_shapekey_batch_count = 0
+global $component_shapekey_batch_vertex_count = 0
+global $component_shapekey_batch_id = 0
+global $updated_component_shapekeys_bitmask = 0
+
+global $component_lod_position_count = 0
+global $updated_lod_levels_bitmask = 0
+global $first_updated_position_uid = 0
+global $source_position_uid = 0
+
+run = CommandListInitializeShapeKeys
+
+[CommandList_GetShapeKeyBatchParams]
+{%- for component in merged_object.components %}
+{%- if component.shapekeys.vertex_count > 0 %}
+if $component_id == {{ component.id }}
+    {%- for batch in component.shapekeys.batches %}
+	if $component_shapekey_batch_id == {{ loop.index0 }}
+		$component_shapekey_batch_vertex_count = {{ batch.vertex_count }}
+	endif
+    {%- endfor %}
+endif
+{%- endif %}
+{%- endfor %}
+
+[CommandListInitializeShapeKeys]
+{%- for component in merged_object.components %}
+{%- if component.shapekeys.vertex_count > 0 %}
+
+$component_id = {{ component.id }}
+
+Pool_ShapeKeyBatchConfigs[$component_id] = ref Resource_Component{{ component.id }}_ShapeKeyBatchConfigs
+Pool_ShapeKeyVertexIds[$component_id] = ref Resource_Component{{ component.id }}_ShapeKeyVertexIds
+Pool_ShapeKeyVertexOffsets[$component_id] = ref Resource_Component{{ component.id }}_ShapeKeyVertexOffsets
+
+$shapekeyed_position_uid = $component_id * $position_instance_count
+Pool_VertexPositions[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0
+Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0
+{%- if component.shapekeys.lod_position_count > 0 %}
+{%- for lod_id, lod in enumerate(extracted_object.components[component.id].lods) %}
+$shapekeyed_position_uid = $shapekeyed_position_uid + 1
+Pool_VertexPositions[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0_LOD{{ lod_id + 1 }}
+Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0_LOD{{ lod_id + 1 }}
+
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+
+; Shape Keys: Engine -------------------------
+
+; Usage Example (set `Component 0` `Shape Key 0` value to `0.5`):
+;
+; $component_id = 0
+; $shapekey_id = 0
+; $shapekey_value = 0.5
+; local $shapekey_0_value
+; if $shapekey_0_value != $shapekey_value
+;     run = CommandListSetShapeKey
+;     $shapekey_0_value = $shapekey_value
+; endif
+;
+; For optimization purposes, we want to run `CommandListSetShapeKey` only when shapekey value was changed. So we:
+;   * Declare dedicated `local $shapekey_0_value` for `Shape Key 0` to remember its last set value.
+;   * Compare values and do `run` only on values mismatch, afterwards we update `$shapekey_0_value` with new value.
+[CommandListSetShapeKey]
+$\EFMIv1\shapekey_id = $shapekey_id
+$\EFMIv1\shapekey_value = $shapekey_value
+{{note("Contains shapekey values configured via this CommandList calls.")}}
+Resource\EFMIv1\Output_ShapeKeyValues = ref Pool_ShapeKeyValuesRW[$component_id]
+{{note("Assign specified $shapekey_value to $shapekey_id shapekey.")}}
+run = CustomShader\EFMIv1\ShapeKeySetter
+{{note("Single bit corresponding to this component inside $updated_component_shapekeys_bitmask.")}}
+local $component_update_state_bit = 1 << $component_id
+{{note("If component update state bit is set to 1 (which means 'no update required')...")}}
+if (($updated_component_shapekeys_bitmask & $component_update_state_bit) != 0)
+    {{note("... than set it to 0, indicating that this component requires shapekeys recalculation.")}}
+    $updated_component_shapekeys_bitmask = $updated_component_shapekeys_bitmask & ~$component_update_state_bit
+endif
+
+[CommandList_ProcessShapeKeysBatch]
+$\EFMIv1\shapekey_batch_id = $component_shapekey_batch_id
+$\EFMIv1\shapekey_batch_vertex_count = $component_shapekey_batch_vertex_count
+{{note("Contains position deltas quantisation scales and per-batch configs.")}}
+Resource\EFMIv1\Input_ShapeKeyBatchConfigs = ref Pool_ShapeKeyBatchConfigs[$component_id]
+{{note("Contains IDs of vertices affected by shapekeys.")}}
+Resource\EFMIv1\Input_ShapeKeyVertexIds = ref Pool_ShapeKeyVertexIds[$component_id]
+{{note("Contains per-vertex XYZ position deltas calculated for max shapekey value (1.0).")}}
+Resource\EFMIv1\Input_ShapeKeyVertexOffsets = ref Pool_ShapeKeyVertexOffsets[$component_id]
+{{note("Contains shapekey values configured via CommandListSetShapeKey.")}}
+Resource\EFMIv1\Input_ShapeKeyValues = ref Pool_ShapeKeyValuesRW[$component_id]
+{{note("Stores summed per-vertex weighted XYZ positions deltas quantized to INT32.")}}
+Resource\EFMIv1\Output_QuantizedShapeKeyDeltas = ref Resource_QuantizedShapeKeyDeltasRW
+{{note("Calculate effect of each shapekey of vertex positions (weighted XYZ deltas) and accumulate them as INT32-quantized values.")}}
+{{note("Quantization is required to prevent overflow and also benefit from atomic IterlockedAdd which works on integers.")}}
+run = CommandList\EFMIv1\LoadCustomShapeKeysBatch
+
+[CommandList_ProcessShapeKeysBatches]
+{{note("Load params of $component_id -> $component_shapekey_batch_id shapekey batch to temp INI vars.")}}
+run = CommandList_GetShapeKeyBatchParams
+{{note("Calculate effect of each shapekey of vertex positions (XYZ vertex position deltas) and accumulate them as INT32-quantized values.")}}
+{{note("Quantization is required to prevent overflow and also benefit from atomic IterlockedAdd which works on integers.")}}
+run = CommandList_ProcessShapeKeysBatch
+{{note("Recursively call this command list again to process the next shapekey batch (if it exists).")}}
+$component_shapekey_batch_id = $component_shapekey_batch_id + 1
+if $component_shapekey_batch_id < $component_shapekey_batch_count
+	run = CommandList_ProcessShapeKeysBatches
+endif
+
+[CommandList_DequantizeShapeKeys]
+{{note("Contains position deltas dequantisation scales.")}}
+Resource\EFMIv1\Input_ShapeKeyBatchConfigs = ref Pool_ShapeKeyBatchConfigs[$component_id]
+{{note("Contains per-vertex XYZ positions (mesh geometry).")}}
+Resource\EFMIv1\Input_VertexPositions = ref Pool_VertexPositions[$shapekeyed_position_uid]
+{{note("Contains accumulated INT32-quantized position deltas.")}}
+Resource\EFMIv1\Input_QuantizedShapeKeyDeltas = ref Resource_QuantizedShapeKeyDeltasRW
+{{note("Stores result of sum of dequantized vertex position deltas of all shapekeys and vertex positions (morphed mesh geometry).")}}
+Resource\EFMIv1\Output_ShapeKeyedPositions = ref Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid]
+{{note("Dequantize accumulated INT32-quantized position deltas to FLOAT32 and sum them with vertex position buffer.")}}
+run = CommandList\EFMIv1\DequantizeCustomShapeKeys
+
+[CommandList_ProcessShapeKeysUpdate]
+{{note("Reset temporary buffer used to accumulate position deltas from multiple shapekeys (and shapekey batches).")}}
+clear = Resource_QuantizedShapeKeyDeltasRW
+{{note("Recursively loop through shapekey batches to accumulate INT32-quantized position deltas.")}}
+$component_shapekey_batch_id = 0
+run = CommandList_ProcessShapeKeysBatches
+{{note("Dequantize accumulated INT32-quantized position deltas to FLOAT32 and sum them with vertex position buffer.")}}
+run = CommandList_DequantizeShapeKeys
+
+[CommandList_CopyShapeKeyedPosition]
+Resource\EFMIv1\Input_ShapeKeyedPositions = ref Pool_ShapeKeyedPositionsRW[$source_position_uid]
+Resource\EFMIv1\Output_ShapeKeyedPositions = ref Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid]
+run = CommandList\EFMIv1\CopyShapeKeyedPosition
+
+[CommandList_UpdateShapeKeys]
+{{note("Single bit corresponding to this component inside $updated_component_shapekeys_bitmask.")}}
+{{note("Prevents expensive shape key calculations from being executed more than once per request for the same component.")}}
+local $component_update_state_bit = 1 << $component_id
+{{note("Here we branch based on how consitent position buffer layout is across LoD levels of this component.")}}
+if $component_lod_position_count == 0
+    {{note("This component uses the same position buffer layout for all LoD levels, so it needs only one shape-keyed position buffer.")}}
+    {{note("To give this component unique UID address space, we multiply its ID by max LoD levels count across all components.")}}
+	$shapekeyed_position_uid = $component_id * $position_instance_count
+	{{note("If shape keys were not yet evaluated for this component...")}}
+	if (($updated_component_shapekeys_bitmask & $component_update_state_bit) == 0)
+        {{note("... execute the expensive update once.")}}
+		run = CommandList_ProcessShapeKeysUpdate
+        {{note("Remember that pending shapekeys update for this component has already been processed.")}}
+		$updated_component_shapekeys_bitmask = $updated_component_shapekeys_bitmask | $component_update_state_bit
+	endif
+else
+    {{note("This component uses different position layouts per LoD, so each LoD requires its own shape-keyed position buffer.")}}
+    {{note("Here we also mix-in LoD index to differintiate LoD levels within UID address space of this component.")}}
+	$shapekeyed_position_uid = $component_id * $position_instance_count + $lod_level
+	{{note("Single bit corresponding to current LoD level. Used to track which LoD buffers have already received shape-keyed positions update.")}}
+	local $lod_level_update_state_bit = 1 << $lod_level
+	{{note("If shape keys update was not yet processed for this component...")}}
+	if (($updated_component_shapekeys_bitmask & $component_update_state_bit) == 0)
+        {{note("... execute the expensive update once.")}}
+		run = CommandList_ProcessShapeKeysUpdate
+        {{note("Remember that pending shapekeys update for this component has already been processed.")}}
+		$updated_component_shapekeys_bitmask = $updated_component_shapekeys_bitmask | $component_update_state_bit
+		{{note("Remember which generated position buffer should be used as the source for all other LoD levels of this component.")}}
+		$first_updated_position_uid = $shapekeyed_position_uid
+		{{note("Reset update states for all LoD levels and mark current LoD level as already having updated shape-keyed positions.")}}
+		$updated_lod_levels_bitmask = 0
+		$updated_lod_levels_bitmask = $updated_lod_levels_bitmask | $lod_level_update_state_bit
+	endif
+    {{note("If this LoD level has not been updated yet, copy already computed shape-keyed positions from the first updated one.")}}
+    {{note("Ensures copy happens only once per lod level per request, instead of evaluating shape keys again.")}}
+	if (($updated_lod_levels_bitmask & $lod_level_update_state_bit) == 0)
+        {{note("Source buffer containing shape-keyed positions computed by the first processed LoD.")}}
+		$source_position_uid = $first_updated_position_uid
+        {{note("Copy shape-keyed positions from already updated LoD level.")}}
+		run = CommandList_CopyShapeKeyedPosition
+        {{note("Remember that this LoD level has already been processed.")}}
+		$updated_lod_levels_bitmask = $updated_lod_levels_bitmask | $lod_level_update_state_bit
+	endif
+endif
+
+{%- for component in merged_object.components %}
+{%- if component.shapekeys.vertex_count > 0 %}
+
+[CommandList_UpdateShapeKeys_Component{{ component.id }}]
+{{note("Pass pre-defined params of this component to global scope.")}}
+$component_id = {{ component.id }}
+$component_shapekey_batch_count = {{ component.shapekeys.batches | length }}
+$component_lod_position_count = {{ component.shapekeys.lod_position_count }}
+{{note("Here we branch the template itself (since this CommandList is tailored for this component).")}}
+{%- if component.shapekeys.lod_position_count == 0 %}
+{{note("This component uses the same position buffer layout for all LoD levels.")}}
+{{note("So we simply call CommandList_UpdateShapeKeys without any extra per-lod-level state tracking.")}}
+run = CommandList_UpdateShapeKeys
+{%- else %}
+{{note("This component uses different position layouts per LoD.")}}
+{{note("Declare local variables to store per-lod-level position buffers update states.")}}
+local $updated_lod_levels_bitmask_{{ component.id }}
+local $first_updated_position_uid_{{ component.id }}
+{{note("Pass local vars to global scope for CommandList_UpdateShapeKeys to consume.")}}
+$updated_lod_levels_bitmask = $updated_lod_levels_bitmask_{{ component.id }}
+$first_updated_position_uid = $first_updated_position_uid_{{ component.id }}
+{{note("Call CommandList_UpdateShapeKeys with passed per-lod-level state for this component.")}}
+run = CommandList_UpdateShapeKeys
+{{note("Write back CommandList_UpdateShapeKeys results to the local scope, so global ones could be re-used for component.")}}
+$first_updated_position_uid_{{ component.id }} = $first_updated_position_uid
+$updated_lod_levels_bitmask_{{ component.id }} = $updated_lod_levels_bitmask
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+
+; Shape Keys: Resources -------------------------
+
+[Pool_ShapeKeyBatchConfigs]
+pool_size = $shapekeyed_components_count
+pool_index_type = fifo
+
+[Pool_ShapeKeyVertexIds]
+pool_size = $shapekeyed_components_count
+pool_index_type = fifo
+
+[Pool_ShapeKeyVertexOffsets]
+pool_size = $shapekeyed_components_count
+pool_index_type = fifo
+
+[Pool_ShapeKeyValuesRW]
+pool_size = $shapekeyed_components_count
+pool_index_type = fifo
+type = RWBuffer
+format = R32G32B32A32_FLOAT
+array = {{ 32 * merged_object.shapekeys.max_batches_count }}
+
+[Resource_QuantizedShapeKeyDeltasRW]
+type = RWBuffer
+format = R32_FLOAT
+stride = 12
+array = $shapekeyed_comp_max_vertices
+
+[Pool_VertexPositions]
+pool_size = $shapekeyed_positions_count
+pool_index_type = fifo
+type = Buffer
+format = R32_FLOAT
+
+[Pool_ShapeKeyedPositionsRW]
+pool_size = $shapekeyed_positions_count
+pool_index_type = fifo
+type = RWBuffer
+format = R32_FLOAT
+
+{%- endif %}
+
 ; Resources: Buffers -------------------------
 
 {%- for buffer_name, buffer in buffers.items() %}
 
 [Resource_{{ buffer_name }}]
 type = Buffer
-{%- if buffer_name.endswith('IB') %}
+{%- if buffer_name.endswith('IB') or 'ShapeKey' in buffer_name %}
 format = {{ buffer.layout.semantics[0].get_format() }}
 {%- endif %}
 stride = {{ buffer.layout.stride }}
