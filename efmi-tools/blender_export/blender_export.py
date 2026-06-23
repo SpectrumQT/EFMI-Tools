@@ -35,15 +35,18 @@ class ObjectMergerEFMI(ObjectMerger):
 
     @staticmethod
     def fill_missing_data(objects):
-        for object in objects:
-            mesh = object.data
-            # Fill missing COLOR
-            if not mesh.attributes.get('COLOR', None):
-                data = numpy.zeros((len(mesh.loops), 4), dtype=numpy.float32)
-                create_color_attribute(mesh, 'COLOR', data)
-            # Fill missing TEXCOORD.xy
-            if not mesh.uv_layers.get('TEXCOORD.xy'):
-                create_uv_layer(mesh, 'TEXCOORD.xy')
+        try:
+            for object in objects:
+                mesh = object.data
+                # Fill missing COLOR
+                if not mesh.attributes.get('COLOR', None):
+                    data = numpy.zeros((len(mesh.loops), 4), dtype=numpy.float32)
+                    create_color_attribute(mesh, 'COLOR', data)
+                # Fill missing TEXCOORD.xy
+                if not mesh.uv_layers.get('TEXCOORD.xy'):
+                    create_uv_layer(mesh, 'TEXCOORD.xy')
+        except Exception as e:
+            raise ValueError(f"Failed to fill missing data for temp object `{object.name}`: {str(e)}")
 
 
 # TODO: Add support of export of unhandled semantics from vertex attributes
