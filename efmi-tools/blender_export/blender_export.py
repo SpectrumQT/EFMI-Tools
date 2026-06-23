@@ -287,6 +287,7 @@ class ModExporter:
             merged_object.vertex_count = vertex_count
             merged_object.shapekeys.vertex_count = len(self.buffers.get('ShapeKeyVertexId', []))
 
+            # Build blend remap system metadata
             remapped_vgs_counts = self.buffers.pop('BlendRemapLayout', None)
             if remapped_vgs_counts is not None:
                 remap_id = 0

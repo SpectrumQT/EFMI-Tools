@@ -142,13 +142,13 @@ class EFMI_Settings(bpy.types.PropertyGroup):
 
     skip_draw_resource_hashes_enabled: BoolProperty(
         name="Components Filtering: Blacklisted Hashes",
-        description="Skip components with any of listed hashes when extracting an object (separators: `,` `;` ` `). Useful when extarcting full model from open world dump to separate it from few LoD 1 components.",
+        description="Skip components with any of listed hashes when extracting an object (separators: `,` `;` ` `). Useful when extracting full model from open world dump to separate it from few LoD 1 components.",
         default=False,
     ) # type: ignore
 
     skip_draw_resource_hashes: StringProperty(
         name="",
-        description="Skip components with any of listed hashes when extracting an object (separators: `,` `;` ` `). Useful when extarcting full model from open world dump to separate it from few LoD 1 components.",
+        description="Skip components with any of listed hashes when extracting an object (separators: `,` `;` ` `). Useful when extracting full model from open world dump to separate it from few LoD 1 components.",
         default="",
     ) # type: ignore
 

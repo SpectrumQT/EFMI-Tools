@@ -10,24 +10,6 @@ from ..migoto_io.data_model.data_model import DataModel
 
 
 class DataModelEFMI(DataModel):
-    buffers_format: dict[str, BufferLayout] = {
-        'Index': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.Index), DXGIFormat.R16_UINT, stride=6),
-        ]),
-        'Position': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.Position, 0), DXGIFormat.R32G32B32_FLOAT),
-            BufferSemantic(AbstractSemantic(Semantic.EncodedData, 0), DXGIFormat.R32_UINT),
-        ]),
-        'TexCoord': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.TexCoord, 0), DXGIFormat.R32G32_FLOAT),
-            BufferSemantic(AbstractSemantic(Semantic.Color, 0), DXGIFormat.R8G8B8A8_SNORM),
-        ]),
-        'Blend': BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.Blendweights, 0), DXGIFormat.R16_UNORM, stride=8),
-            BufferSemantic(AbstractSemantic(Semantic.Blendindices, 0), DXGIFormat.R8_UINT, stride=4),
-        ]),
-    }
-
     def __init__(self):
         # self.flip_winding = True
         self.flip_bitangent_sign = True
