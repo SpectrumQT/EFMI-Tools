@@ -267,7 +267,7 @@ class ModExporter:
             
         if merged_object.object is not None:
 
-            buffers, vertex_count = data_model.get_data(
+            buffers, vertex_ids = data_model.get_data(
                 context=self.context, 
                 collection=self.cfg.component_collection, 
                 obj=merged_object.object, 
@@ -277,6 +277,8 @@ class ModExporter:
                 mesh_rotation=self.extracted_object.rotation.to_tuple(),
                 object_index_layout=index_layout,
             )
+
+            vertex_count = len(vertex_ids)
             
             self.buffers.update(buffers)
 

@@ -106,7 +106,7 @@ class DataModelEFMI(DataModel):
             mesh_scale: float = 1.0,
             mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
             object_index_layout: list[int] | None = None
-        ) -> tuple[dict[str, NumpyBuffer], int]:
+        ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
@@ -199,7 +199,7 @@ class DataModelEFMI(DataModel):
                 blend_remaps = self.build_blend_remap(context, object_index_layout, index_buffer, blend_buffer, vg_buffer)
                 buffers.update(blend_remaps)
 
-        return buffers, len(vertex_ids)
+        return buffers, vertex_ids
     
     def decode_tbn_data_10_10_10_2(self, data: numpy.ndarray, debug: bool = False) -> numpy.ndarray:
         """

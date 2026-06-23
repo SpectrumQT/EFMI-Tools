@@ -126,7 +126,7 @@ class DataModel:
         mesh_scale: float = 1.0,
         mesh_rotation: tuple[float] = (0.0, 0.0, 0.0),
         object_index_layout: list[int] | None = None
-    ) -> tuple[dict[str, NumpyBuffer], int]:
+    ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
@@ -143,8 +143,10 @@ class DataModel:
         )
 
         buffers = self.build_buffers(index_data, vertex_buffer, excluded_buffers, buffers_format)
+        
+        vertex_ids = vertex_buffer.get_field(AbstractSemantic(Semantic.VertexId))
 
-        return buffers, len(vertex_buffer)
+        return buffers, vertex_ids
 
     def build_buffers(
         self,
