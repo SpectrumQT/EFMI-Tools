@@ -13,7 +13,7 @@ from ..migoto_io.migoto_model.migoto_format import MigotoFmt
 
 from ..migoto_io.object_extractor.migoto_object.metadata_format import read_metadata, ExtractedObject, ExtractedObjectBuffer, EnumEncoder
 
-from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeys
+from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeys, MergedObjectShapeKeysBatch
 from .metadata_collector import Version, ModInfo
 from .texture_collector import Texture, get_textures
 from .ini_maker import IniMaker
@@ -132,7 +132,10 @@ class ModExporter:
             except Exception as e:
                 raise ConfigError('component_collection', f'Failed to create merged object from collection:\n{e}')
             
-            self.merged_object.components += merged_object.components
+            assert len(merged_object.components) == 1
+            merged_component = merged_object.components[0]
+
+            self.merged_object.components.append(merged_component)
 
             try:
                 self.build_data_buffers(merged_object, component_id)
@@ -145,7 +148,12 @@ class ModExporter:
 
             self.merged_object.index_count += merged_object.index_count
             self.merged_object.vertex_count += merged_object.vertex_count
-            # self.merged_object.shapekeys.vertex_count += merged_object.shapekeys.vertex_count
+
+            if merged_component.shapekeys.vertex_count > 0:
+                self.merged_object.shapekeys.max_lod_position_count = max(self.merged_object.shapekeys.max_lod_position_count, merged_component.shapekeys.lod_position_count)
+                self.merged_object.shapekeys.max_batches_count = max(self.merged_object.shapekeys.max_batches_count, len(merged_component.shapekeys.batches))
+                self.merged_object.shapekeys.max_vertex_count = max(self.merged_object.shapekeys.max_vertex_count, merged_component.vertex_count)
+                self.merged_object.shapekeys.shapekeyed_components_count += 1
 
         if not self.cfg.partial_export:
             self.textures = get_textures(self.object_source_folder, [])
@@ -232,6 +240,36 @@ class ModExporter:
 
             self.buffers[f'Component{component_id}_VB2_LOD{lod_level}'] = vb2_remapped
 
+    def build_shapekey_buffers(self, data_model: DataModelEFMI, vertex_ids: numpy.ndarray, merged_object: MergedObject, component_id: int):
+        assert len(merged_object.components) == 1
+        component = merged_object.components[0]
+
+        shapekey_batches, shapekey_data, shapekey_buffers = data_model.get_shapekeys(
+            obj=merged_object.object, 
+            vertex_ids=vertex_ids,
+            mirror_mesh=self.cfg.mirror_mesh,
+            mesh_scale=1.0,
+            mesh_rotation=self.extracted_object.rotation.to_tuple()
+        )
+
+        if not shapekey_batches:
+            return
+        
+        for buffer_name, buffer in shapekey_buffers.items():
+            self.buffers[f'Component{component_id}_{buffer_name}'] = buffer
+
+        extracted_component = self.extracted_object.components[component_id]
+        for lod in extracted_component.lods:
+            if "VB0" in lod.vb_formats:
+                component.shapekeys.lod_position_count += 1
+
+        for batch in shapekey_batches:
+            component.shapekeys.batches.append(MergedObjectShapeKeysBatch(
+                vertex_offset=batch.vertex_offset,
+                vertex_count=batch.vertex_count,
+            ))
+            component.shapekeys.vertex_count += batch.vertex_count
+
     def build_data_buffers(self, merged_object: MergedObject, component_id = -1):
         start_time = time.time()
 
@@ -287,8 +325,9 @@ class ModExporter:
 
             self.build_lod_buffers(component_id)
 
+            self.build_shapekey_buffers(data_model, vertex_ids, merged_object, component_id)
+
             merged_object.vertex_count = vertex_count
-            merged_object.shapekeys.vertex_count = len(self.buffers.get('ShapeKeyVertexId', []))
 
             # Build blend remap system metadata
             remapped_vgs_counts = self.buffers.pop('BlendRemapLayout', None)

@@ -29,8 +29,22 @@ class TempObject:
 
 
 @dataclass
+class MergedObjectShapeKeysBatch:
+    vertex_count: int = field(default_factory=list)
+    vertex_offset: int = field(default_factory=list)
+
+
+@dataclass
+class ComponentShapeKeys:
+    vertex_count: int = 0
+    lod_position_count: int = 0
+    batches: list[MergedObjectShapeKeysBatch] = field(default_factory=list)
+
+
+@dataclass
 class MergedObjectComponent:
     objects: list[TempObject]
+    shapekeys: ComponentShapeKeys
     id: int = 0
     vertex_count: int = 0
     index_count: int = 0
@@ -45,7 +59,10 @@ class MergedObjectComponent:
 
 @dataclass
 class MergedObjectShapeKeys:
-    vertex_count: int = 0
+    max_lod_position_count: int = 0
+    max_batches_count: int = 0
+    max_vertex_count: int = 0
+    shapekeyed_components_count: int = 0
 
 
 @dataclass
@@ -94,7 +111,7 @@ class ObjectMerger:
                     vertex_count=0,
                     index_count=0,
                     vg_count=0,
-                    shapekeys=None,
+                    shapekeys=MergedObjectShapeKeys(),
                     skeleton_type=SkeletonType.PerComponent,
                 )
             else:
@@ -119,6 +136,7 @@ class ObjectMerger:
                     MergedObjectComponent(
                         id=self.component_id if self.component_id != -1 else component_id,
                         objects=[],
+                        shapekeys=ComponentShapeKeys(),
                         index_count=0,
                     )
                 )

@@ -13,6 +13,7 @@ from .dxgi_format import DXGIFormat, DXGIType
 from .byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout, NumpyBuffer
 from .data_extractor import BlenderDataExtractor
 from .data_importer import BlenderDataImporter
+from .shapekeys import ShapeKeyBatch, ShapeKeyBatchBuilder, ShapeKeyData
 
 
 class DataModel:
@@ -744,3 +745,51 @@ class DataModel:
         vertex_attribute = obj_mesh.attributes.new(name=attr_name, type="FLOAT_COLOR", domain="POINT")   
         vertex_attribute.data.foreach_set('color', mesh_data.flatten())
         obj_mesh.update()
+
+    def get_shapekeys(
+            self, 
+            obj: bpy.types.Object,  
+            vertex_ids: numpy.ndarray, 
+            mirror_mesh: bool = False,
+            mesh_scale: float = 1.0,
+            mesh_rotation: tuple[float] = (0.0, 0.0, 0.0),
+        ) -> tuple[list[ShapeKeyBatch] | None, ShapeKeyData | None, dict[str, numpy.ndarray] | None]:
+        
+        start_time = time.time()
+
+        if len(vertex_ids) == 0:
+            return None, None, None
+        
+        batch_builder = ShapeKeyBatchBuilder(self.data_extractor)
+
+        batches = batch_builder.get_shapekey_batches(obj, vertex_ids)
+
+        if len(batches) == 0:
+            return None, None, None
+
+        shapekey_data = ShapeKeyData.from_batches(batches)
+            
+        if mirror_mesh:
+            shapekey_data.position_deltas[:, 0] *= -1
+
+        if mesh_rotation != (0.0, 0.0, 0.0):
+            shapekey_data.position_deltas = self.converter_rotate_vector(shapekey_data.position_deltas, mesh_rotation)
+
+        if mesh_scale != 1.0:
+            shapekey_data.position_deltas = self.converter_scale_vector(shapekey_data.position_deltas, mesh_scale)
+
+        buffers = {
+            'ShapeKeyBatchConfigs': NumpyBuffer(BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 0), DXGIFormat.R32G32B32A32_UINT),
+            ]), shapekey_data.batch_configs),
+            'ShapeKeyVertexIds': NumpyBuffer(BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 1), DXGIFormat.R32_UINT),
+            ]), shapekey_data.vertex_ids),
+            'ShapeKeyVertexOffsets': NumpyBuffer(BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.ShapeKey, 2), DXGIFormat.R16_FLOAT),
+            ]), shapekey_data.position_deltas),
+        }
+
+        print(f'Shape Keys formatting time: {time.time() - start_time :.3f}s ({len(vertex_ids)} shapekeyed vertices)')
+
+        return batches, shapekey_data, buffers
