@@ -110,9 +110,14 @@ It assumes that you already have basic knowledge about 3dmigoto-based modding, s
 
 ### Shape Keys
 
-* To skip Shape Key during **Mod Export**, just mute it (uncheck its checkbox in the Shape Keys list).
-* Game doesn't use shapekeys, everything is weighted. But feel free to use them in Blender for own convenience!
-> I plan to introduce custom shapekeys system to EFMI in the future.
+Endfield itself does not expose shape keys to its GPU pipeline and everything is weighted. But **EFMI Tools** offers a ways to benefit from them:
+
+1. **Regular** shape keys are baked into the exported mesh shape the same way how they look in Blender.
+2. **Custom** shape keys can be dynamically controlled via `mod.ini` code.
+
+To skip any Shape Key during **Mod Export**, just mute it (uncheck its checkbox in the **Shape Keys** list).
+
+See dedicated **[EFMI Shape Keys Guide](shape_keys_guide.md)** for **WAY** more details.
 
 ### UV Maps
 
