@@ -95,12 +95,14 @@ class DataModelEFMI(DataModel):
 
         build_blend_remaps = object_index_layout is not None and 'Blend' not in excluded_buffers
 
-        # Request 16-bit VG ids for Blend Remap system
+        # Request data for Blend Remap system
         if build_blend_remaps:
             # Number of VGs per vertex may vary based on buffers_format, we should respect it
-            num_vgs = buffers_format['Blend'].get_element(AbstractSemantic(Semantic.Blendindices, 0)).get_num_values()
-            buffers_format['BlendRemapVertexVG'] = BufferLayout([
-                BufferSemantic(AbstractSemantic(Semantic.Blendindices, 1), DXGIFormat.R16_UINT, stride=num_vgs*2),
+            # num_vgs = buffers_format['Blend'].get_element(AbstractSemantic(Semantic.Blendindices, 0)).get_num_values()
+            num_vgs = 4
+            buffers_format['BlendRemap'] = BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.Blendindices, 31), DXGIFormat.R16_UINT, stride=num_vgs*2),
+                BufferSemantic(AbstractSemantic(Semantic.Blendweights, 31), DXGIFormat.R32_FLOAT, stride=num_vgs*4),
             ])
 
         # Request TBN data (tangents, bitangent signs and normals) signs for encoding
@@ -171,15 +173,7 @@ class DataModelEFMI(DataModel):
         # vertex_buffer.set_field(AbstractSemantic(Semantic.Color), color0)
 
         # Assemble data into requested buffers
-        buffers = self.build_buffers(index_data, vertex_buffer, excluded_buffers, buffers_format)
-
-        if build_blend_remaps:
-            blend_buffer = buffers.get('Blend', None)
-            if blend_buffer is not None:
-                index_buffer = buffers.get('Index', None)
-                vg_buffer = buffers.get('BlendRemapVertexVG', None)
-                blend_remaps = self.build_blend_remap(context, object_index_layout, index_buffer, blend_buffer, vg_buffer)
-                buffers.update(blend_remaps)
+        buffers = self.build_buffers(context, index_data, vertex_buffer, excluded_buffers, buffers_format)
 
         return buffers, vertex_ids
     
@@ -357,97 +351,4 @@ class DataModelEFMI(DataModel):
         encoded = self.converter_encode_10_10_10_2(data)
 
         return encoded
-
-    def build_blend_remap(
-        self,
-        context: bpy.types.Context,
-        index_layout: list[int],
-        index_buffer: NumpyBuffer,
-        blend_buffer: NumpyBuffer,
-        vg_buffer: NumpyBuffer,
-    ) -> dict[str, NumpyBuffer]:
-        
-        start_time = time.time()
-
-        remapped_vgs_counts = []
-
-        if context.scene.efmi_tools_settings.index_data_cache:
-            # Partial export is enabled and index buffer cache exists, lets load it
-            index_data = numpy.array(json.loads(context.scene.efmi_tools_settings.index_data_cache)).ravel()
-        else:
-            if index_buffer is None:
-                raise ValueError(f'Failed to build blend remap: `Index` buffer does not exist!')
-            index_data = index_buffer.get_field(0).ravel()
-
-        vg_ids = vg_buffer.get_field(vg_buffer.layout.get_element(AbstractSemantic(Semantic.Blendindices, 1)))
-        vg_weights = blend_buffer.get_field(blend_buffer.layout.get_element(AbstractSemantic(Semantic.Blendweights, 0)))
-        
-        blend_remap_forward = numpy.empty(0, dtype=numpy.uint16)
-        blend_remap_reverse = numpy.empty(0, dtype=numpy.uint16)
-
-        index_offset = 0
-        for index_count in index_layout:
-            # Skip remapping the component if its custom mesh is empty
-            if index_count == 0:
-                remapped_vgs_counts.append(0)
-                continue
     
-            # Extract a segment of Index Buffer for the component (index_count number of indices starting from index_offset)
-            vertex_ids = index_data[index_offset:index_offset+index_count]
-            # Remove duplicate vertex ids (since multiple indices may reference the same vertex)
-            vertex_ids = numpy.unique(vertex_ids)
-
-            # Get VG ids used to weight vertices used in the component
-            obj_vg_ids = vg_ids[vertex_ids].flatten()
-            
-            # Skip remapping the component if it references VG ids below 256 only
-            if numpy.max(obj_vg_ids) < 256:
-                index_offset += index_count
-                remapped_vgs_counts.append(0)
-                continue
-
-            # Get weights for vertices referenced by the component
-            obj_vg_weights = vg_weights[vertex_ids].flatten()
-            # Get indices of non-zero weights (to skip remapping VG ids that are listed but not actually used)
-            non_zero_idx = numpy.nonzero(obj_vg_weights > 0)[0]
-
-            obj_vg_ids = obj_vg_ids[non_zero_idx]
-            obj_vg_ids = numpy.unique(obj_vg_ids)
-
-            if numpy.max(obj_vg_ids) < 256:
-                index_offset += index_count
-                remapped_vgs_counts.append(0)
-                continue
-            
-            remapped_vgs_counts.append(len(obj_vg_ids))
-
-            forward = numpy.zeros(512, dtype=numpy.uint16)
-            forward[numpy.arange(len(obj_vg_ids))] = obj_vg_ids
-
-            reverse = numpy.zeros(512, dtype=numpy.uint16)
-            reverse[obj_vg_ids] = numpy.arange(len(obj_vg_ids))
-
-            blend_remap_forward = numpy.concatenate((blend_remap_forward, forward), axis=0)
-            blend_remap_reverse = numpy.concatenate((blend_remap_reverse, reverse), axis=0)
-
-            index_offset += index_count
-
-        buffers = {}
-
-        buffers['BlendRemapForward'] = NumpyBuffer(BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.RawData, 0), DXGIFormat.R16_UINT),
-        ]))
-        buffers['BlendRemapReverse'] = NumpyBuffer(BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.RawData, 1), DXGIFormat.R16_UINT),
-        ]))
-        buffers['BlendRemapLayout'] = NumpyBuffer(BufferLayout([
-            BufferSemantic(AbstractSemantic(Semantic.RawData, 2), DXGIFormat.R32_UINT),
-        ]))
-
-        buffers['BlendRemapForward'].set_data(blend_remap_forward)
-        buffers['BlendRemapReverse'].set_data(blend_remap_reverse)
-        buffers['BlendRemapLayout'].set_data(numpy.array(remapped_vgs_counts))
-
-        print(f'Blend remap time: {time.time() - start_time :.3f}s ({int(len(blend_remap_forward) / 512)} remaps)')
-
-        return buffers

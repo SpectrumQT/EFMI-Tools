@@ -143,7 +143,7 @@ class DataModel:
             mesh_rotation=mesh_rotation,
         )
 
-        buffers = self.build_buffers(index_data, vertex_buffer, excluded_buffers, buffers_format)
+        buffers = self.build_buffers(context, index_data, vertex_buffer, excluded_buffers, buffers_format)
         
         vertex_ids = vertex_buffer.get_field(AbstractSemantic(Semantic.VertexId))
 
@@ -151,6 +151,7 @@ class DataModel:
 
     def build_buffers(
         self,
+        context: bpy.types.Context,
         index_data: numpy.ndarray,
         vertex_buffer: NumpyBuffer,
         excluded_buffers: list[str],
@@ -166,11 +167,12 @@ class DataModel:
         result = {}
         for buffer_name, buffer_layout in buffers_format.items():
             buffer = None
-            if buffer_name in excluded_buffers:
+            if buffer_name in excluded_buffers or buffer_name == "BlendRemap":
                 continue
             for semantic in buffer_layout.semantics:
                 if semantic.abstract.enum in (Semantic.ShapeKey, Semantic.RawData, Semantic.Unknown):
                     continue
+
                 if semantic.abstract.enum == Semantic.Index:
                     data = index_data
                     if extend_ib_width:
@@ -185,23 +187,45 @@ class DataModel:
                                 buffer_layout.fill_stride()
                 else:
                     data = vertex_buffer.get_field(semantic.get_name())
+
                 if buffer is None:
                     buffer = NumpyBuffer(buffer_layout, size=len(data))
                 try:
                     semantic_converters = []
                     format_converters = []
                     format_converters += self.format_encoders.get(semantic.abstract, [])
-                    # Normalize weights
+
                     if semantic.abstract.enum == Semantic.Blendweights:
+                        # Normalize weights
                         if semantic.format.numpy_base_type in [numpy.uint8, numpy.uint16]:
                             format_converters.append(lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=semantic.format.numpy_base_type))
                         else:
                             semantic_converters.append(lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=numpy.float32))
+                            
+                    elif semantic.abstract.enum == Semantic.Blendindices:
+                        # Remap VG IDs from global merged skeleton space to local component space 
+                        if "BlendRemap" in buffers_format.keys():
+                            remap_forward, remap_reverse = self.build_blend_remap(context, index_data, vertex_buffer)
+                            
+                            # Use 16-bit VG IDs
+                            data = vertex_buffer.get_field(AbstractSemantic(Semantic.Blendindices, 31))
+
+                            # Schedule remapping of global merged skeleton VG Ids to local component ones
+                            semantic_converters.append(lambda data: self.converter_apply_lookup(data, remap_reverse))
+                            
+                            result['BlendRemapForward'] = NumpyBuffer(BufferLayout([
+                                BufferSemantic(AbstractSemantic(Semantic.RawData, 0), DXGIFormat.R16_UINT),
+                            ]))
+                            result['BlendRemapForward'].set_data(remap_forward)
+                    
                     buffer.import_semantic_data(data, semantic, semantic_converters, format_converters)
+
                 except Exception as e:
                     raise ValueError(f'Failed to import {semantic} data for buffer {buffer_name}: {e}')
+                
             if buffer is None:
                 continue
+
             result[buffer_name] = buffer
 
         print(f'Buffers build time: {time.time() - start_time :.3f}s ({len(result)} buffers)')
@@ -723,6 +747,15 @@ class DataModel:
         return normalized_weights_integer.astype(numpy.uint8)
 
     @staticmethod
+    def converter_apply_lookup(data: numpy.ndarray, lookup: numpy.ndarray) -> numpy.ndarray:
+        """
+        Applies lookup table to numpy array by replacing each element with `lookup[element]`.
+        All values in `data` must be valid indices into `lookup`; the output has the same shape as `data`.
+        """
+        data = lookup[data]
+        return data
+
+    @staticmethod
     def _create_verterx_attribute(attr_name, object_name, vertex_data: numpy.ndarray, vertex_ids: numpy.ndarray | None = None):
         """
         DEBUG: Creates float colors vertex attribute with provided data
@@ -793,3 +826,49 @@ class DataModel:
         print(f'Shape Keys formatting time: {time.time() - start_time :.3f}s ({len(vertex_ids)} shapekeyed vertices)')
 
         return batches, shapekey_data, buffers
+
+    def build_blend_remap(
+        self,
+        context: bpy.types.Context,
+        index_buffer: numpy.ndarray,
+        vertex_buffer: NumpyBuffer,
+    ) -> tuple[numpy.ndarray, numpy.ndarray]:
+        
+        start_time = time.time()
+
+        if context.scene.efmi_tools_settings.index_data_cache:
+            # Partial export is enabled and index buffer cache exists, lets load it
+            index_data = numpy.array(json.loads(context.scene.efmi_tools_settings.index_data_cache)).ravel()
+        else:
+            if index_buffer is None:
+                raise ValueError(f'Failed to build blend remap: `Index` buffer does not exist!')
+            index_data = index_buffer.ravel()
+
+        vg_ids = vertex_buffer.get_field(AbstractSemantic(Semantic.Blendindices, 31))
+        vg_weights = vertex_buffer.get_field(AbstractSemantic(Semantic.Blendweights, 31))
+        
+        # Extract a segment of Index Buffer for the component (index_count number of indices starting from index_offset)
+        vertex_ids = index_data
+        # Remove duplicate vertex ids (since multiple indices may reference the same vertex)
+        vertex_ids = numpy.unique(vertex_ids)
+
+        # Get VG ids used to weight vertices used in the component
+        obj_vg_ids = vg_ids[vertex_ids].flatten()
+
+        # Get weights for vertices referenced by the component
+        obj_vg_weights = vg_weights[vertex_ids].flatten()
+        # Get indices of non-zero weights (to skip remapping VG ids that are listed but not actually used)
+        non_zero_idx = numpy.nonzero(obj_vg_weights > 0)[0]
+
+        obj_vg_ids = obj_vg_ids[non_zero_idx]
+        obj_vg_ids = numpy.unique(obj_vg_ids)
+
+        forward = numpy.zeros(512, dtype=numpy.uint16)
+        forward[numpy.arange(len(obj_vg_ids))] = obj_vg_ids
+
+        reverse = numpy.zeros(512, dtype=numpy.uint16)
+        reverse[obj_vg_ids] = numpy.arange(len(obj_vg_ids))
+
+        print(f'Blend remap time: {time.time() - start_time :.3f}s ({int(len(forward) / 512)} remaps)')
+
+        return forward, reverse
