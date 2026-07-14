@@ -87,23 +87,10 @@ class DataModelEFMI(DataModel):
             mirror_mesh: bool = False,
             mesh_scale: float = 1.0,
             mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-            object_index_layout: list[int] | None = None
         ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
-
-        build_blend_remaps = object_index_layout is not None and 'Blend' not in excluded_buffers
-
-        # Request data for Blend Remap system
-        if build_blend_remaps:
-            # Number of VGs per vertex may vary based on buffers_format, we should respect it
-            # num_vgs = buffers_format['Blend'].get_element(AbstractSemantic(Semantic.Blendindices, 0)).get_num_values()
-            num_vgs = 4
-            buffers_format['BlendRemap'] = BufferLayout([
-                BufferSemantic(AbstractSemantic(Semantic.Blendindices, 31), DXGIFormat.R16_UINT, stride=num_vgs*2),
-                BufferSemantic(AbstractSemantic(Semantic.Blendweights, 31), DXGIFormat.R32_FLOAT, stride=num_vgs*4),
-            ])
 
         # Request TBN data (tangents, bitangent signs and normals) signs for encoding
         buffers_format['TBN'] = BufferLayout([
@@ -122,7 +109,7 @@ class DataModelEFMI(DataModel):
             mirror_mesh=mirror_mesh,
             mesh_scale=mesh_scale,
             mesh_rotation=mesh_rotation,
-            cache_index_data=build_blend_remaps,
+            cache_index_data=False,
         )
 
         # Remove TBN, we don't want to export it as buffer

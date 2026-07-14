@@ -281,12 +281,6 @@ class ModExporter:
             for buffer_name, buffer_layout in self.extracted_object.export_format.items():
                 buffers_format[buffer_name] = buffer_layout.to_layout()
 
-        index_layout = None
-        if merged_object.object is not None and len(merged_object.object.vertex_groups) > 256:
-            index_layout = []
-            for component in merged_object.components:
-                index_layout.append(component.index_count)
-
         fmt_path = self.object_source_folder / f'Component {component_id}.fmt'
         with open(fmt_path, 'r') as fmt:
             migoto_fmt = MigotoFmt(fmt)
@@ -316,7 +310,6 @@ class ModExporter:
                 buffers_format=buffers_format,
                 mirror_mesh=self.cfg.mirror_mesh,
                 mesh_rotation=self.extracted_object.rotation.to_tuple(),
-                object_index_layout=index_layout,
             )
 
             vertex_count = len(vertex_ids)
@@ -328,20 +321,6 @@ class ModExporter:
             self.build_shapekey_buffers(data_model, vertex_ids, merged_object, component_id)
 
             merged_object.vertex_count = vertex_count
-
-            # Build blend remap system metadata
-            blend_remap = self.buffers.pop('BlendRemapForward', None)
-            if blend_remap is not None:
-                component: MergedObjectComponent = merged_object.components[0]
-                blend_remap_vg_count = len(numpy.unique(blend_remap.data))
-                if blend_remap_vg_count > 256:
-                    raise ConfigError('component_collection', dedent(f"""
-                        Component{component_id} 256 VG limit exceeded!
-                        Currently it consists of {len(component.objects)} object(s) using total of {blend_remap_vg_count} VGs with non-zero weights.
-                        Please reduce the number of non-empty VGs or split objects between different components.
-                    """))
-                self.buffers[f'Component{component_id}_BlendRemap'] = blend_remap
-                component.blend_remap_vg_count = blend_remap_vg_count
 
         print(f'Total mesh data collection time: {time.time() - start_time :.3f}s')
     
