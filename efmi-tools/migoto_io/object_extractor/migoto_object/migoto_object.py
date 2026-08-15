@@ -97,8 +97,20 @@ class MigotoObject:
     metadata: ExtractedObject | None = None
 
     def build_metadata(self):
-        is_weighted = any(component.mesh.get_weighting_type() != WeightingType.NoWeights for component in self.components)
+
+        weigthing_type = WeightingType.NoWeights
+        for component in self.components:
+            component_weigthing_type = component.mesh.get_weighting_type()
+            if component_weigthing_type == WeightingType.Explicit:
+                weigthing_type = WeightingType.Explicit
+                break
+            if component_weigthing_type == WeightingType.Implicit:
+                weigthing_type = WeightingType.Implicit
+                continue
+
+        is_weighted = weigthing_type != WeightingType.NoWeights
         has_vertex_offset = any(component.raw_data.vertex_offset != 0 for component in self.components)
+
         if (has_vertex_offset or not is_weighted) and not self.id.startswith("Character"):
             rotation = ObjectRotation(90, 0, 0)
         else:
@@ -113,6 +125,7 @@ class MigotoObject:
             vb0_hash=None,
             vertex_count=sum([component.mesh.format.vertex_count for component in self.components]),
             index_count=sum([component.mesh.format.index_count for component in self.components]),
+            weigthing_type=weigthing_type,
             rotation=rotation,
             components=[component.metadata for component in self.components],
             shapekeys=ExtractedObjectShapeKeys(),

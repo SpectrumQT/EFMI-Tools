@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, asdict, fields, is_dataclass
 
 from ...data_model.dxgi_format import DXGIFormat
 from ...data_model.byte_buffer import Semantic, AbstractSemantic, BufferSemantic, BufferLayout
+from ...migoto_model.migoto_mesh import WeightingType
 
 
 @dataclass
@@ -122,6 +123,7 @@ class ExtractedObject:
     vb0_hash: str
     vertex_count: int
     index_count: int
+    weigthing_type: WeightingType
     rotation: ObjectRotation
     components: list[ExtractedObjectComponent]
     shapekeys: ExtractedObjectShapeKeys
@@ -138,6 +140,12 @@ class ExtractedObject:
                 if self.format_version is None:
                     self.format_version = 2
                 component.mesh_name = f"Component {component_id}"
+
+        # TODO: Infer weigthing type from fmt files.
+        if self.weigthing_type is None:
+            self.weigthing_type = WeightingType.Explicit if self.rotation.to_tuple() == (0, 0, 0) else WeightingType.NoWeights
+        else:
+            self.weigthing_type = WeightingType(self.weigthing_type)
 
         if self.format_version is None:
             self.format_version = 3
