@@ -104,7 +104,8 @@ class DataModel:
             # Remap indicies of VG groups
             if vg_remap is not None:
                 if semantic.abstract.enum == Semantic.Blendindices:
-                    self._insert_converter(semantic_converters, semantic.abstract, lambda data: vg_remap[data])
+                    converter = lambda data, lookup=vg_remap: self.converter_apply_lookup(data, lookup)
+                    self._insert_converter(semantic_converters, semantic.abstract, converter)
             # Auto-resize second dimension of data array to match Blender format
             if semantic.abstract.enum not in [Semantic.Blendindices, Semantic.Blendweights, Semantic.Attribute, Semantic.EncodedData]:
                 blender_num_values = self.blender_data_formats[semantic.abstract.enum].get_num_values()
