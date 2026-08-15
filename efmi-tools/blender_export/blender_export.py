@@ -2,18 +2,22 @@ import time
 import shutil
 
 from dataclasses import asdict
+from textwrap import dedent
 
 from ..addon.exceptions import ConfigError
 
 from ..migoto_io.blender_interface.utility import *
 from ..migoto_io.blender_tools.meshes import *
-from ..migoto_io.data_model.byte_buffer import NumpyBuffer, BufferLayout, BufferSemantic, Semantic
+
+from ..migoto_io.data_model.dxgi_format import DXGIFormat
+from ..migoto_io.data_model.byte_buffer import NumpyBuffer, BufferLayout, BufferSemantic, AbstractSemantic, Semantic
 from ..migoto_io.data_model.data_model import DataModel
 from ..migoto_io.migoto_model.migoto_format import MigotoFmt
+from ..migoto_io.migoto_model.migoto_mesh import WeightingType
 
 from ..migoto_io.object_extractor.migoto_object.metadata_format import read_metadata, ExtractedObject, ExtractedObjectBuffer, EnumEncoder
 
-from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectShapeKeys, MergedObjectShapeKeysBatch
+from .object_merger import ObjectMerger, SkeletonType, MergedObject, MergedObjectComponent, MergedObjectShapeKeys, MergedObjectShapeKeysBatch
 from .metadata_collector import Version, ModInfo
 from .texture_collector import Texture, get_textures
 from .ini_maker import IniMaker
@@ -91,7 +95,22 @@ class ModExporter:
             raise ConfigError('object_source_folder', 'Specified folder is missing Metadata.json!')
         except Exception as e:
             raise ConfigError('object_source_folder', f'Failed to load Metadata.json:\n{e}')
+
+        if self.cfg.mod_skeleton_type == 'MERGED':
+            if self.extracted_object.format_version < 4:
+                raise ConfigError('object_source_folder', f"""
+                    Specified sources folder uses old data format `v{self.extracted_object.format_version}`!
+                    This format is missing data required for Merged Skeleton.
+                    Please extract object again from a new frame dump.
+                """)
             
+            if self.extracted_object.weigthing_type != WeightingType.Explicit:
+                raise ConfigError('mod_skeleton_type', f"""
+                    Specified sources folder contains object {'without' if self.extracted_object.weigthing_type == WeightingType.NoWeights else 'with implicit'} weights!
+                    Merged Skeleton makes sense only for object with explicit weights.
+                    Please use Per-Component Skeleton instead.
+                """)
+
         if self.extracted_object.format_version < 3:
             raise ConfigError('object_source_folder', f"""
                 Specified sources folder uses outdated data format `v{self.extracted_object.format_version}`!
@@ -110,6 +129,7 @@ class ModExporter:
 
         if self.cfg.mod_skeleton_type == 'MERGED':
             self.skeleton_type = SkeletonType.Merged
+            self.cfg.use_spatial_identification = True
         else:
             self.skeleton_type = SkeletonType.PerComponent
 
@@ -232,15 +252,31 @@ class ModExporter:
             
             remap = numpy.array([lod_mesh.vg_map.get(str(vg_id), vg_id) for vg_id in range(vg_count)])
 
-            vb2_remapped = NumpyBuffer(layout=vb2.layout, size=len(vb2.data))
+            if self.skeleton_type == SkeletonType.PerComponent:
 
-            vb2_remapped.set_field(Semantic.Blendindices, remap[indices])
+                vb2_remapped = NumpyBuffer(layout=vb2.layout, size=len(vb2.data))
 
-            weights = vb2.get_field(Semantic.Blendweights)
-            if weights is not None:
-                vb2_remapped.set_field(Semantic.Blendweights, weights)
+                vb2_remapped.set_field(Semantic.Blendindices, remap[indices])
 
-            self.buffers[f'Component{component_id}_VB2_LOD{lod_level}'] = vb2_remapped
+                weights = vb2.get_field(Semantic.Blendweights)
+                if weights is not None:
+                    vb2_remapped.set_field(Semantic.Blendweights, weights)
+
+                self.buffers[f'Component{component_id}_VB2_LOD{lod_level}'] = vb2_remapped
+
+            else:
+                # Add blend remap table itself to export buffers.
+                # This table is used by bone data importer CS to drive merged skeleton by LoDs.
+                 
+                layout = BufferLayout([
+                    BufferSemantic(AbstractSemantic(Semantic.RawData, 31), DXGIFormat.R16_UINT),
+                ])
+
+                vb2_remap = NumpyBuffer(layout=layout, size=len(remap))
+
+                vb2_remap.set_field(AbstractSemantic(Semantic.RawData, 31), remap)
+                
+                self.buffers[f'Component{component_id}_VB2_LOD{lod_level}_BlendRemap'] = vb2_remap
 
     def build_shapekey_buffers(self, data_model: DataModelEFMI, vertex_ids: numpy.ndarray, merged_object: MergedObject, component_id: int):
         assert len(merged_object.components) == 1
@@ -312,6 +348,8 @@ class ModExporter:
                 buffers_format=buffers_format,
                 mirror_mesh=self.cfg.mirror_mesh,
                 mesh_rotation=self.extracted_object.rotation.to_tuple(),
+                min_vg_byte_width=2 if self.skeleton_type == SkeletonType.Merged else 1,
+                max_vg_byte_width=2 if self.skeleton_type == SkeletonType.Merged else 0
             )
 
             vertex_count = len(vertex_ids)

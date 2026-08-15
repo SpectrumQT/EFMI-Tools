@@ -137,7 +137,8 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         row = add_row_with_error_handler(layout, cfg, 'mod_output_folder')
         row.prop(cfg, 'mod_output_folder')
         
-        # layout.row().prop(cfg, 'mod_skeleton_type')
+        row = add_row_with_error_handler(layout, cfg, 'mod_skeleton_type')
+        row.prop(cfg, 'mod_skeleton_type')
 
         if not cfg.partial_export:
 
@@ -177,9 +178,12 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         row.prop(cfg, 'object_source_folder')
 
         layout.row().prop(cfg, 'color_storage')
-        # layout.row().prop(cfg, 'import_skeleton_type')
-        # if cfg.import_skeleton_type == 'MERGED':
-        #     layout.row().prop(cfg, 'skip_empty_vertex_groups')
+
+        row = add_row_with_error_handler(layout, cfg, 'import_skeleton_type')
+        row.prop(cfg, 'import_skeleton_type')
+
+        if cfg.import_skeleton_type == 'MERGED':
+            layout.row().prop(cfg, 'skip_empty_vertex_groups')
         layout.row().prop(cfg, 'mirror_mesh')
 
         layout.row()
@@ -437,8 +441,10 @@ class EFMI_TOOLS_PT_SidePanelAdvancedExport(bpy.types.Panel):
             layout.row().prop(cfg, 'add_missing_vertex_groups')
             layout.row().prop(cfg, 'fill_missing_mesh_data')
             layout.row().prop(cfg, 'allow_export_without_lods')
-            # layout.row().prop(cfg, 'unrestricted_custom_shape_keys')
+            layout.row().prop(cfg, 'use_spatial_identification')
+            layout.row().prop(cfg, 'spatial_identification_threshold')
             if cfg.mod_skeleton_type == 'MERGED':
+                layout.row().prop(cfg, 'max_instance_count')
                 layout.row().prop(cfg, 'skeleton_scale')
 
         # layout.row().prop(cfg, 'partial_export')

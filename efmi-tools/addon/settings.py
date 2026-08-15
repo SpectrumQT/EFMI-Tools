@@ -226,7 +226,7 @@ class EFMI_Settings(bpy.types.PropertyGroup):
             ('MERGED', 'Merged', 'Imported mesh will have unified list of Vertex Groups, allowing to weight any vertex of any component to any bone. Mod Upsides: easy to weight, custom skeleton scale support, advanced weighting support (i.e. long hair to cape). Mod Downsides: model will be updated with 1 frame delay, mod will pause while there are more than one of same modded object on screen. Suggested usage: new modders, character or echo mods with complex weights.'),
             ('COMPONENT', 'Per-Component', 'Imported mesh will have its Vertex Groups split into per component lists, restricting weighting of any vertex only to its parent component. Mod Upsides: no 1-frame delay for model updates, minor performance gain. Mod downsides: hard to weight, very limited weighting options, no custom skeleton scale support. Suggested usage: weapon mods and simple retextures.'),
         ],
-        default=1,
+        default=0,
     ) # type: ignore
 
     skip_empty_vertex_groups: BoolProperty(
@@ -477,7 +477,7 @@ class EFMI_Settings(bpy.types.PropertyGroup):
     ) # type: ignore
 
     # Advanced
-
+    
     allow_export_without_lods: BoolProperty(
         name="Allow Export Without Lods",
         description="Enable mod export with no LOD data in Metadata.json. Mod will fail to load properly in open world",
@@ -496,10 +496,26 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=True,
     ) # type: ignore
 
-    unrestricted_custom_shape_keys: BoolProperty(
-        name="Unrestricted Custom Shape Keys",
-        description="Allows to use Custom Shape Keys for components that don't have them by default. Generates extra mod.ini logic",
-        default=False,
+    max_instance_count: IntProperty(
+        name="Max Instance Count",
+        description="Max number of duplicates of this object supported by merged skeleton. Each instance has upfront VRAM cost of 96 bytes per VG and slightly increases CPU data access latency.",
+        default=8,
+        min=2,
+        max=32,
+    ) # type: ignore
+
+    use_spatial_identification: BoolProperty(
+        name="Use Spatial Identification",
+        description="Verify component ownership based on position. Helps avoid modifying components shared between objects, such as shadow meshes. Only supported for weighted objects.",
+        default=True,
+    ) # type: ignore
+
+    spatial_identification_threshold: IntProperty(
+        name="Spatial Identification Threshold",
+        description="Number of components that must appear in draw calls before new spatial identity will be treated as this object. Must be higher than number of non-unique meshes (e.g. shadow meshes) and lower or equal to number of LoD0 meshes used in LoD1+.",
+        default=3,
+        min=1,
+        max=8,
     ) # type: ignore
 
     skeleton_scale: FloatProperty(
