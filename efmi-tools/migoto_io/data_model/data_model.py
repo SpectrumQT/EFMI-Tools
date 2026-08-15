@@ -661,7 +661,7 @@ class DataModel:
         converters[abstract_semantic].insert(0, converter)
             
     @staticmethod
-    def converter_normalize_weights(weights: numpy.ndarray, sanitize=True, dtype=numpy.dtype):
+    def converter_normalize_weights_old(weights: numpy.ndarray, sanitize=True, dtype=numpy.dtype):
         """
         Normalizes 2-dim array of per-vertex float32 weights to uint8 (0-255 range) or uint16 (0-65535 range)
         Precision error caused by float truncation is distributed according to precision loss factor
@@ -738,6 +738,87 @@ class DataModel:
         numpy.add.at(normalized_weights, (flattened_row, flattened_col), 1)
 
         return normalized_weights
+
+    @staticmethod
+    def converter_normalize_weights(weights: numpy.ndarray, sanitize=True, dtype=numpy.float32):
+        """
+        Normalizes 2-dim array of per-vertex float32 weights
+        
+        Supports quantization to uint8 (0-255 range) or uint16 (0-65535 range) using the largest remainder method:
+        - Each row sums exactly to 255 or 65535
+        - Minimal total quantization error
+        - Error distributed according to fractional parts
+        """
+
+        # Detect quantization target
+        if dtype == numpy.uint8:
+            container_max = 255
+            requires_quantization = True
+        elif dtype == numpy.uint16:
+            container_max = 65535
+            requires_quantization = True
+        elif dtype == numpy.dtype(numpy.float32):
+            container_max = 1.0
+            requires_quantization = False
+        else:
+            raise ValueError(f'Cannot normalize to dtype {dtype} (not supported)')
+
+        # Step 1: Normalize weights with 32-bit precision
+
+        # Replace any non-float weight values with zeroes
+        if sanitize:
+            weights = numpy.nan_to_num(weights, nan=0.0, posinf=0.0, neginf=0.0)
+
+        if requires_quantization:
+            # Ignore weights below minimal precision
+            weights[weights < 1 / container_max] = 0.0
+
+        # Calculate total weights for each vertex
+        weight_sums = weights.sum(axis=1, keepdims=True)
+        # Weight vertices without weights (with zero sum) to the first VG
+        zero_sums_idx = numpy.where(weight_sums <= 0)[0]
+        if len(zero_sums_idx) > 0:
+            weights[zero_sums_idx, 0] = 1.0
+            weight_sums[zero_sums_idx] = 1.0
+        # Normalize weights with 32-bit precision
+        weights /= weight_sums
+
+        # Float32 target needs no advanced quantization
+        if not requires_quantization:
+            return weights.astype(numpy.float32)
+        
+        # Step 2: Quantize to target container maximum
+
+        # Scale to integer space
+        scaled = weights * container_max
+
+        # Initial allocation
+        quantized = numpy.floor(scaled).astype(dtype)
+
+        # Step 3: Distribute precision error to weights according to fractional parts
+
+        # Fractional parts determine who gets the remaining units
+        fractions = scaled - quantized
+
+        # Number of units still missing per vertex
+        missing = container_max - quantized.sum(axis=1)
+
+        # Number of influences
+        influence_count = weights.shape[1]
+
+        # Sort fractional parts descending
+        order = numpy.argsort(-fractions, axis=1)
+
+        # Pick recipients - select first `missing` entries per row
+        mask = numpy.arange(influence_count)[None, :] < missing[:, None]
+
+        rows = numpy.arange(weights.shape[0])[:, None]
+        rows = numpy.broadcast_to(rows, order.shape)
+
+        # Apply +1 corrections
+        quantized[rows[mask], order[mask]] += 1
+
+        return quantized
 
     @staticmethod
     def converter_normalize_wights_8bit(weights: numpy.ndarray, sanitize_weights=True):
