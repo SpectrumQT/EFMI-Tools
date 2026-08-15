@@ -42,8 +42,6 @@ class IniMaker:
     buffers: dict[str, NumpyBuffer]
     textures: list[Texture]
     comment_code: bool
-    unrestricted_custom_shape_keys: bool
-    skeleton_scale: float
     formatter: TextFormatter = TextFormatter()
     # Output
     ini_string: str = field(init=False)

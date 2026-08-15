@@ -344,8 +344,6 @@ class ModExporter:
             buffers=self.buffers,
             textures=self.textures,
             comment_code=self.cfg.comment_ini,
-            skeleton_scale=self.cfg.skeleton_scale,
-            unrestricted_custom_shape_keys=self.cfg.unrestricted_custom_shape_keys,
         )
 
         self.ini = ini_maker
