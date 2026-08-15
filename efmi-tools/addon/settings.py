@@ -152,6 +152,18 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default="",
     ) # type: ignore
 
+    bones_deduping_skip_hashes_enabled: BoolProperty(
+        name="Bones Deduping: Blacklisted Hashes",
+        description="Prevent mapping bones of other components to components with any of listed hashes when building unique bones list for Merged Skeleton (IB/VB/texture etc, separators: `,` `;` ` `). Useful when some components aren't always rendered (e.g. Liino's rocket boots).",
+        default=False,
+    ) # type: ignore
+
+    bones_deduping_skip_hashes: StringProperty(
+        name="",
+        description="Prevent mapping bones of other components to components with any of listed hashes when building unique bones list for Merged Skeleton (IB/VB/texture etc, separators: `,` `;` ` `). Useful when some components aren't always rendered (e.g. Liino's rocket boots).",
+        default="",
+    ) # type: ignore
+
     skip_small_textures: BoolProperty(
         name="Textures Filtering: Skip Small",
         description="Skip texture smaller than specified size",

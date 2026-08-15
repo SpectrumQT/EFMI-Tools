@@ -1,14 +1,17 @@
 import copy
 import numpy
+import re
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from textwrap import dedent
+# from mathutils.kdtree import KDTree
 
 from ...data_model.byte_buffer import BufferLayout, BufferSemantic, AbstractSemantic, Semantic, NumpyBuffer
 from ...data_model.dxgi_format import DXGIFormat
 
-from ...migoto_model.types import SlotType
-from ...migoto_model.frame_model.resources import IndexBuffer, VertexBuffer
+from ...migoto_model.migoto_format import MigotoFormat
+from ...migoto_model.types import SlotType, ShaderType, ResourceSlot
+from ...migoto_model.frame_model.resources import Resource, ConstantBuffer, IndexBuffer, VertexBuffer, ResourceStorage
 from ...migoto_model.frame_model.calls import ShaderCall
 from ...migoto_model.migoto_mesh import MigotoMesh, WeightingType
 
@@ -34,8 +37,27 @@ class MigotoObjectFilter:
 
 
 @dataclass
+class MergedSkeletonFilter:
+    bones_deduping_component_hash_blacklist: str = ""
+
+    _bones_deduping_component_hash_blacklist: set[str] = field(init=False)
+
+    def __post_init__(self):
+        self._bones_deduping_component_hash_blacklist = set([x for x in re.split(r"[,; ]", self.bones_deduping_component_hash_blacklist) if x])
+        self._bones_deduping_component_hash_blacklist.add("80aafa4b")  # Liino's rocket boots IB hash
+
+    def is_valid_bone_source(self, component: MigotoComponent) -> bool:
+        for shader_call in component.raw_data.shader_calls:
+            for blacklisted_hash in self._bones_deduping_component_hash_blacklist:
+                blacklisted_resources = shader_call.resources.get_by_hash(blacklisted_hash)
+                if blacklisted_resources:
+                    return False
+        return True
+
+@dataclass
 class MigotoObjectBuilder:
     migoto_object_filter: MigotoObjectFilter
+    merged_skeleton_filter: MergedSkeletonFilter
     verbose_logging: bool = False
 
     semantic_remap = {
@@ -293,6 +315,125 @@ class MigotoObjectBuilder:
 
         return vertex_buffer
 
+    def get_instance_config_cb(self, raw_component: RawComponent) -> ConstantBuffer | None:
+        for shader_call in raw_component.shader_calls:
+            for slot, cb in shader_call.resources.constant_buffers.items():
+                if slot.shader_type != ShaderType.Vertex:
+                    continue
+                if cb.num_constants == 4096:
+                    return cb
+        return None
+    
+
+    def get_skeleton_data_buffer(self, raw_component: RawComponent) -> Resource | None:
+        for shader_call in raw_component.shader_calls:
+            resource = shader_call.resources.get_by_slot(ResourceSlot(ShaderType.Vertex, SlotType.Texture, 0))
+            if resource:
+                return resource
+        return None
+
+    def get_skeleton_data(self, raw_component: RawComponent) -> tuple[numpy.ndarray | None, numpy.ndarray | None]:
+        instance_config_cb = self.get_instance_config_cb(raw_component)
+        if instance_config_cb is None:
+            raise ValueError("No instance_config_cb")
+
+        if not instance_config_cb.buffer:
+            instance_config_cb.build_numpy_buffer(MigotoFormat(vb_layout=BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.RawData, 0), DXGIFormat.R32G32B32A32_FLOAT, input_slot=0),
+            ])))
+
+        offset = instance_config_cb.first_constant
+        data = instance_config_cb.buffer.get_field(0)
+
+        instance_config = data[offset: offset + 16]
+
+        skeleton_offsets = instance_config[5][0 : 2].view(numpy.uint32)
+
+        skeleton_data_buffer = self.get_skeleton_data_buffer(raw_component)
+        if skeleton_data_buffer is None:
+            raise ValueError("No skeleton_data_buffer")
+        
+        if not skeleton_data_buffer.buffer:
+            skeleton_data_buffer.build_numpy_buffer(MigotoFormat(vb_layout=BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.RawData, 0), DXGIFormat.R32G32B32A32_FLOAT, input_slot=0),
+            ])))
+
+        data = skeleton_data_buffer.buffer.get_field(0)
+
+        skeleton_data_0, skeleton_data_1 = None, None
+
+        if skeleton_offsets[0]:
+            data_offset_0 = skeleton_offsets[0] + 3
+            skeleton_data_0 = data[data_offset_0: data_offset_0 + 256 * 3].reshape(-1, 12)
+            # numpy.round(skeleton_data_0, 2)
+        
+        if skeleton_offsets[1]:
+            data_offset_1 = skeleton_offsets[1] + 3
+            skeleton_data_1 = data[data_offset_1: data_offset_1 + 256 * 3].reshape(-1, 12)
+            # numpy.round(skeleton_data_1, 2)
+
+        return skeleton_data_0, skeleton_data_1
+    
+    def build_merged_skeleton_vg_map(self, migoto_object: MigotoObject):
+        """
+        Concatenates VGs of components and remaps duplicate VGs based on bone values from skeleton buffers
+        """
+
+        print(f'[{migoto_object.id}]: Start building Merged Skeleton VG Map...')
+
+        vg_offset = 0
+        vg_map = {}
+        unique_bones = {}
+        
+        for component_id, component in enumerate(migoto_object.components):
+
+            skeleton_buffer, _ = self.get_skeleton_data(component.raw_data)
+
+            vg_map[component_id] = {}
+            # Fetch joined list of all VG ids of all vertices of the component (4 VG ids per vertex)
+            vertex_groups = component.mesh.vertex_buffer.get_field(Semantic.Blendindices)
+            # For remapping purposes, VG count is the highest used VG id among all vertices of the component
+            # It allows to efficiently construct merged skeleton buffer in-game via vg_offset & vg_count of components
+            component.metadata.vg_offset = vg_offset
+            component.metadata.vg_count = int(vertex_groups.max() + 1)
+            # Ensure frame dump data integrity
+            if len(skeleton_buffer) < component.metadata.vg_count:
+                raise ValueError('skeleton of Component_%d has only %d bones, while there are %d VGs declared' % (
+                    component_id, len(skeleton_buffer), component.metadata.vg_count))
+            
+            is_valid_bone_source = self.merged_skeleton_filter.is_valid_bone_source(component)
+            # Build VG map
+            for vg_id in range(component.metadata.vg_count):
+                # Fetch data floats of bone which VG is linked to
+                bone_data = tuple(skeleton_buffer[vg_id].tolist())
+                # Skip zero-valued bone (garbage data)
+                if all(v == 0 for v in bone_data):
+                    continue
+                # Get desc object of already registered unique bone data
+                unique_bone_data = unique_bones.get(bone_data, None)
+                # Register VG in VG map
+                if unique_bone_data is None or unique_bone_data['component_id'] == component_id:
+                    # Handle new VG or duplicate VG within same component
+                    shifted_vg_id = vg_offset + vg_id  # Remap VG to VG of merged skeleton
+                    vg_map[component_id][vg_id] = shifted_vg_id  # Remap VG to VG of merged skeleton
+                    if is_valid_bone_source:
+                        unique_bones[bone_data] = {  # Register unique bone data
+                            'component_id': component_id,
+                            'local_vg_id': vg_id,
+                            'global_vg_id': shifted_vg_id
+                        }
+                else:
+                    # Handle duplicate VG across different components
+                    vg_map[component_id][vg_id] = unique_bone_data['global_vg_id']  # Remap VG to VG of already registered bone
+                    
+                    print(f"[{migoto_object.id}]: Remapped duplicate VG: Component_{component_id} VG {vg_id} -> Component_{unique_bone_data['component_id']} VG {unique_bone_data['local_vg_id']} (merged skeleton VG {unique_bone_data['global_vg_id']})")
+                    
+            vg_offset += component.metadata.vg_count
+
+        print(f'[{migoto_object.id}]: Successfully built Merged Skeleton VG Map for {vg_offset} Vertex Groups')
+
+        return dict(sorted(vg_map.items()))
+
     def build_migoto_component(self, raw_component: RawComponent) -> MigotoComponent:
 
         index_buffer = self.build_index_buffer(raw_component)
@@ -370,6 +511,18 @@ class MigotoObjectBuilder:
 
         return True
 
+    def build_vg_map(self, migoto_object: MigotoObject):
+        if migoto_object.metadata.weigthing_type != WeightingType.Explicit:
+            print(f"[{migoto_object.id}]: Skipped building VG map (Merged Skeleton doesn't make sense for {migoto_object.metadata.weigthing_type.value} object)")
+            return
+        try:
+            vg_map = self.build_merged_skeleton_vg_map(migoto_object)
+            for component_id, component in enumerate(migoto_object.metadata.components):
+                component.vg_map = vg_map[component_id]
+        except Exception as e:
+            print(f"[{migoto_object.id}]: Failed to build VG map: {e} (this object won't be able to use Merged Skeleton)")
+
+
     def build(self, raw_objects: dict[str, RawObject]) -> list[MigotoObject]:
 
         migoto_objects = []
@@ -397,6 +550,8 @@ class MigotoObjectBuilder:
                 self.label_object(migoto_object)
 
                 migoto_object.build_metadata()
+
+                self.build_vg_map(migoto_object)
 
                 migoto_objects.append(migoto_object)
 

@@ -12,7 +12,7 @@ from ..migoto_io.migoto_model.migoto_mesh import GeometryMatcherConfig, Geometry
 
 from ..migoto_io.object_extractor.raw_object.raw_object_extractor import DrawCallFilter, RawObjectFilter
 from ..migoto_io.object_extractor.migoto_object.migoto_object import MigotoObject, MigotoComponent, DuplicateDataError
-from ..migoto_io.object_extractor.migoto_object.migoto_object_builder import MigotoObject, MigotoObjectFilter
+from ..migoto_io.object_extractor.migoto_object.migoto_object_builder import MigotoObject, MigotoObjectFilter, MergedSkeletonFilter
 from ..migoto_io.object_extractor.migoto_object.textures_descriptor import TextureFilter
 from ..migoto_io.object_extractor.object_extractor import ObjectExtractor
 from ..migoto_io.object_extractor.lod_matcher import LODMatcher, ObjectLowSimilarityError, ComponentLowSimilarityError
@@ -124,6 +124,9 @@ def extract_frame_data(context, cfg, extract_lods=False):
             ignore_errors=cfg.tolerate_extraction_errors,
             skip_static_objects=cfg.skip_static_objects,
         ),
+        merged_skeleton_filter=MergedSkeletonFilter(
+            bones_deduping_component_hash_blacklist=cfg.bones_deduping_skip_hashes if cfg.bones_deduping_skip_hashes_enabled else "",
+        )
     )
 
     if not extract_lods:

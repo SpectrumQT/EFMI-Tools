@@ -233,6 +233,12 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
         sub.enabled = cfg.skip_draw_resource_hashes_enabled
         sub.prop(cfg, "skip_draw_resource_hashes")
 
+        row = layout.row(align=True)
+        row.prop(cfg, "bones_deduping_skip_hashes_enabled",)
+        sub = row.row()
+        sub.enabled = cfg.bones_deduping_skip_hashes_enabled
+        sub.prop(cfg, "bones_deduping_skip_hashes")
+
         layout.row()
             
         row = layout.row(align=True)
