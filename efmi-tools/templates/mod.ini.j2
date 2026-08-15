@@ -90,6 +90,9 @@ global $required_efmi_version = {{ '%0.2f'| format(mod_info.required_efmi_versio
 global $object_guid = {{ extracted_object.index_count }}
 {{note("Number of vertices in custom model")}}
 global $mesh_vertex_count = {{ merged_object.vertex_count }}
+global $component_count = {{ extracted_object.components | length }}
+global $max_instance_count = {{ cfg.max_instance_count }}
+global $bones_count = {{ extracted_object.components | selectattr('cpu_posed', 'equalto', false) | sum(attribute='vg_count') }}
 {{note("ID assigned to our mod by EFMI")}}
 global $mod_id = -1000
 {{note("Controls whether our mod is enabled, prevents any overrides from happening if $mod_enabled == 0")}}
@@ -225,7 +228,7 @@ elif $lod_level == {{ lod_id + 1 }}
     {{note("Use VB1 with full mesh layout")}}
     vb1 = ref Resource_Component{{ component_id }}_VB1
     {%- endif %}
-    {%- if "VB2" in lod.vb_formats or lod.vg_map %}
+    {%- if "VB2" in lod.vb_formats or (lod.vg_map and merged_object.skeleton_type.value != "Merged") %}
     {{note("Use VB2 with LoD mesh layout and/or remapped weights (if LoD mesh uses simplified skeleton)")}}
     vb2 = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}
     {%- elif 'Component'~component_id~'_VB2' in buffers.keys() %}
@@ -242,80 +245,151 @@ endif
 {%- if cfg.use_ini_toggles %}
 if {{ formatter.format_ini_drawvar(obj.name) }}
     {%- if not component.cpu_posed %}
-    drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
+    {%- if cfg.use_spatial_identification %}
+    drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
     {%- else %}
-    draw = from_caller
+    drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
+    {%- endif %}
+    {%- else %}
+    drawindexed = INDEX_COUNT, 0, 0
     {%- endif %}
 endif
 {%- else %}
 {%- if not component.cpu_posed %}
+{%- if cfg.use_spatial_identification %}
+drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
+{%- else %}
 drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
+{%- endif %}
 {%- else %}
 {{note("Use original draw type and arguments (since mesh geometry is not modified)")}}
-draw = from_caller
+drawindexed = INDEX_COUNT, 0, 0
 {%- endif %}
 {%- endif %}
 {%- endfor %}
 
 {%- endfor %}
 
-; Shading: Full Models Draw Call Stacks Processing -------------------------
 
-{%- for component_id, component in enumerate(extracted_object.components) %}
+; ------------------------------------------------------------------------------
+; - DRAW CALLS PROCESSOR
+; ------------------------------------------------------------------------------
 
-{{note("Override draw calls for Component %d" | format(loop.index0))}}
-[TextureOverride_Component{{ component_id }}]
-hash = {{ component.ib_hash }}
-match_index_count = {{ component.index_count }}
-{{note("Signal our mod that object is found on screen and we can start overriding it")}}
-$object_detected = 1
+[Pool_ObjectSpatialIdentity]
+pool_size = $max_instance_count * $\EFMIv1\cfg_spatial_instance_load_ratio
+pool_index_type = spatial
+pool_spatial_radius = $\EFMIv1\cfg_spatial_base_radius
+pool_expiration_timeout_frames = $\EFMIv1\cfg_spatial_expiration_frames
+pool_expiration_reset_elements = $\EFMIv1\cfg_spatial_expiration_reset
+pool_expiration_refresh_on_read = $\EFMIv1\cfg_spatial_expiration_read_refresh
+pool_variable_default_value = $\EFMIv1\cfg_spatial_detault_value
 
-{{note("Signal our mod that object LoD is NOT found on screen (only components with LoDs should do it)")}}
-{%- if component.lods | length > 0 and component.lods[0].ib_hash != component.ib_hash %}
-$lod_level = 0
-{%- endif %}
-if $mod_enabled && DRAW_TYPE == 4
-    {{note("Skip original draw call")}}
-    handling = skip
-    {%- if merged_object.components[component_id].objects | length > 0 %}
-    {{note("Do custom draw calls")}}
-    run = CommandList_Draw_Component{{ component_id }}
-    {%- else %}
-    ; Draw skipped: No matching custom components found
-    ; run = CommandList_Draw_Component{{ component_id }}
-    {%- endif %}
-endif
 
-{%- endfor %}
-
-; Shading: LoD Models Draw Call Stacks Processing -------------------------
-
-{%- for component_id, component in enumerate(extracted_object.components) %}
-
-{%- for lod_id, lod in enumerate(component.lods) if lod.ib_hash != component.ib_hash %}
-
-{{note("Override draw calls for LoD of Component %d" | format(loop.index0))}}
-[TextureOverride_Component{{ component_id }}_LOD{{ lod_id + 1 }}]
-hash = {{ lod.ib_hash }}
-match_index_count = {{ lod.index_count }}
-{{note("Signal our mod that object is found on screen and we can start overriding it")}}
-$object_detected = 1
-{{note("Signal our mod that object LoD is found on screen and we can start overriding it")}}
-$lod_level = {{ lod_id + 1 }}
-if $mod_enabled && DRAW_TYPE == 4
+[CommandList_Component_DrawInstances]
 {{note("Skip original draw call")}}
-    handling = skip
+handling = skip
+
+{{note("Load object info")}}
+$\EFMIv1\component_count = $component_count
+{%- if cfg.use_spatial_identification %}
+$\EFMIv1\identification_min_components = {{ cfg.spatial_identification_threshold }}
+{%- endif %}
+{%- if merged_object.skeleton_type.value == "Merged" %}
+$\EFMIv1\bones_count = $bones_count
+$\EFMIv1\instance_count = $max_instance_count
+{%- endif %}
+run = CommandList\EFMIv1\Object_ReadConfig
+
+{{note("Load component info")}}
+$\EFMIv1\lod_level = $lod_level
+{%- if merged_object.skeleton_type.value == "Merged" %}
+$\EFMIv1\custom_mesh_scale = {{ '%0.2f'| format(cfg.skeleton_scale) }}
+{%- endif %}
+run = CommandList\EFMIv1\Component_ReadConfig
+
+{% if cfg.use_spatial_identification -%}
+{{note("Spatially identify each component instance to figure out which object it belongs to")}}
+Pool\EFMIv1\Input_ObjectSpatialIdentity = ref Pool_ObjectSpatialIdentity
+run = CommandList\EFMIv1\SpatialIdentity_IdentifyComponentInstances
+
+{% if merged_object.skeleton_type.value == "Merged" -%}
+{{note("Set callback to CommandList which attaches merged skeleton resources to EFMI")}}
+CommandList\EFMIv1\Callback_MergedSkeleton_ConnectComponent = ref CommandList_MergedSkeleton_ConnectComponent
+{%- endif %}
+{{note("Do custom non-instanced draw call for each (spatially identified) instance separately")}}
+{{note("Required instance config CB windows manipulation is handled by EFMI automatically")}}
+run = CommandList\EFMIv1\Component_DrawInstances
+{%- else %}
+{{note("Do custom instanced draw call (without decomposition)")}}
+run = CommandList\EFMIv1\Component_DrawInstances_NoDecomposition
+{%- endif %}
+
+
+{%- macro draw_override(component_id, component, hash, index_count, lod_level, is_lod) %}
+{{note("Override draw calls for current LoD level of Component %d" | format(component_id))}}
+[TextureOverride_EntryPoint_Component{{ component_id }}{% if is_lod %}_LOD{{ lod_level }}{% endif %}]
+hash = {{ hash }}
+match_index_count = {{ index_count }}
+{{ note("Signal our mod that object is found on screen and we can start overriding it") }}
+$object_detected = 1
+if $mod_enabled && DRAW_TYPE == 4
+    $\EFMIv1\component_id = {{ component_id }}
+    $\EFMIv1\gpu_posed = {{ (not component.cpu_posed) | int }}
+
+    {%- if is_lod %}
+    {{ note("Signal our mod that object LoD is found on screen and we can start overriding it") }}
+    $lod_level = {{ lod_level }}
+    {%- else %}
+    {{ note("Signal our mod that object LoD is NOT found on screen (only components with LoDs should do it)") }}
+    {%- if component.lods | length > 0 and component.lods[0].ib_hash != component.ib_hash %}
+    $lod_level = 0
+    {%- else %}
+    ; No LoD(s) with different IB hash found for this component, so it cannot be used for lod level detection
+    ; $lod_level = 0
+    {%- endif %}
+    {%- endif %}
+
     {%- if merged_object.components[component_id].objects | length > 0 %}
-    {{note("Do custom draw calls")}}
-    run = CommandList_Draw_Component{{ component_id }}
+    {{ note("Do custom draw calls") }}
+    CommandList\EFMIv1\Callback_Component_DrawCustom = ref CommandList_Draw_Component{{ component_id }}
+    run = CommandList_Component_DrawInstances
     {%- else %}
     ; Draw skipped: No matching custom components found
-    ; run = CommandList_Draw_Component{{ component_id }}
+    ; CommandList\EFMIv1\Callback_Component_DrawCustom = ref CommandList_Draw_Component{{ component_id }}
+    ; run = CommandList_Component_DrawInstances
     {%- endif %}
 endif
 
+{%- endmacro %}
+
+
+; ------------------------------------------------------------------------------
+; - DRAW CALLS OVERRIDES: LOD_0 (FULL DETAIL)
+; ------------------------------------------------------------------------------
+
+{%- for component_id, component in enumerate(extracted_object.components) %}
+{{ draw_override(component_id, component, component.ib_hash,  component.index_count, 0, false) }}
 {%- endfor %}
 
+
+{%- set max_lods = extracted_object.components | map(attribute='lods') | map('length') | max %}
+{%- for lod_level in range(1, max_lods + 1) %}
+
+
+; ------------------------------------------------------------------------------
+; - DRAW CALLS OVERRIDES: LOD_{{ lod_level }}
+; ------------------------------------------------------------------------------
+
+{%- for component_id, component in enumerate(extracted_object.components) %}
+{%- if lod_level - 1 < component.lods | length %}
+{%- set lod = component.lods[lod_level - 1] %}
+
+{%- if lod.ib_hash != component.ib_hash %}
+{{ draw_override(component_id, component, lod.ib_hash, lod.index_count, lod_level, true) }}
+{%- endif %}
+
+{%- endif %}
+{%- endfor %}
 {%- endfor %}
 
 
@@ -335,6 +409,87 @@ if $object_detected
     this = Resource_Texture{{ loop.index0 }}
 endif
 {%- endfor %}
+
+
+{%- if merged_object.skeleton_type.value == "Merged" %}
+
+
+; ------------------------------------------------------------------------------
+; - MERGED SKELETON
+; ------------------------------------------------------------------------------
+
+[Pool_MergedSkeleton_Component_VertexGroupOffsets]
+pool_size = $component_count
+
+[Pool_MergedSkeleton_Component_VertexGroupCounts]
+pool_size = $component_count
+
+[Pool_MergedSkeleton_Component_LodRemaps]
+pool_size = $component_count * $\EFMIv1\cfg_ms_max_lod_level_count
+
+[Pool_MergedSkeleton_Instance_UpdateFrame]
+pool_size = $component_count * $max_instance_count
+
+[Pool_MergedSkeleton_Instance_LodLevel]
+pool_size = $component_count * $max_instance_count
+
+[ResourceMergedSkeletonDataRW]
+type = RWBuffer
+format = R32G32B32A32_FLOAT
+array = ($\EFMIv1\cfg_ms_implicit_bones_count + $\EFMIv1\cfg_ms_skeletons_count * $bones_count * $max_instance_count) * $\EFMIv1\cfg_ms_bone_entry_size
+
+
+[Constants]
+global $merged_skeleton_initialized = 0
+
+
+[CommandList_MergedSkeleton_ConnectComponent]
+if !$merged_skeleton_initialized
+    $merged_skeleton_initialized = 1
+    run = CommandListInitializeMergedSkeleton
+endif
+
+Pool\EFMIv1\Input_MergedSkeleton_Component_VertexGroupOffsets = ref Pool_MergedSkeleton_Component_VertexGroupOffsets
+Pool\EFMIv1\Input_MergedSkeleton_Component_VertexGroupCounts = ref Pool_MergedSkeleton_Component_VertexGroupCounts
+Pool\EFMIv1\Input_MergedSkeleton_Component_LodRemaps = ref Pool_MergedSkeleton_Component_LodRemaps
+
+Pool\EFMIv1\Input_MergedSkeleton_Instance_UpdateFrame = ref Pool_MergedSkeleton_Instance_UpdateFrame
+Pool\EFMIv1\Input_MergedSkeleton_Instance_LodLevel = ref Pool_MergedSkeleton_Instance_LodLevel
+
+Resource\EFMIv1\Output_MergedSkeleton = ref ResourceMergedSkeletonDataRW
+
+run = CommandList\EFMIv1\MergedSkeleton_AttachComponent
+
+; Force 16-bit VG IDs (since Merged Skeleton usually has more than 256 bones)
+vb2->ElementFormat(BLENDINDICES, 0) = R16G16B16A16_UINT
+
+
+[CommandListInitializeMergedSkeleton]
+Resource\EFMIv1\OutputMergedSkeleton_Template = ref ResourceMergedSkeletonDataRW
+run = CommandList\EFMIv1\InitializeMergedSkeleton
+
+local $lod_level_count = $\EFMIv1\cfg_ms_max_lod_level_count
+local $component_id
+{%- for component_id, component in enumerate(extracted_object.components) %}
+{%- if merged_object.components[component_id].objects | length > 0 %}
+{%- if not component.cpu_posed %}
+$component_id = {{ component_id }}
+$Pool_MergedSkeleton_Component_VertexGroupOffsets[$component_id] = {{ component.vg_offset }}
+$Pool_MergedSkeleton_Component_VertexGroupCounts[$component_id] = {{ component.vg_count }}
+Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+0] = null
+{%- for lod_id, lod in enumerate(component.lods) %}
+{%- if "VB2" in lod.vb_formats or lod.vg_map %}
+{{note("Use VB2 with LoD mesh layout and/or remapped weights (if LoD mesh uses simplified skeleton)")}}
+Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+{{ lod_id + 1 }}] = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}_BlendRemap
+{%- else %}
+Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+{{ lod_id + 1 }}] = null
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- endif %}
+
 
 {%- if merged_object.shapekeys.max_batches_count > 0 %}
 
@@ -615,7 +770,7 @@ format = R32_FLOAT
 
 [Resource_{{ buffer_name }}]
 type = Buffer
-{%- if buffer_name.endswith('IB') or 'ShapeKey' in buffer_name %}
+{%- if buffer_name.endswith('IB') or 'ShapeKey' or 'BlendRemap' in buffer_name %}
 format = {{ buffer.layout.semantics[0].get_format() }}
 {%- endif %}
 stride = {{ buffer.layout.stride }}
