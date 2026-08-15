@@ -128,6 +128,8 @@ class DataModel:
         mesh_scale: float = 1.0,
         mesh_rotation: tuple[float] = (0.0, 0.0, 0.0),
         min_ib_byte_width: int = 2,
+        min_vg_byte_width: int = 1,
+        max_vg_byte_width: int = 0,
     ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
@@ -144,6 +146,8 @@ class DataModel:
             mesh_scale=mesh_scale,
             mesh_rotation=mesh_rotation,
             min_ib_byte_width=min_ib_byte_width,
+            min_vg_byte_width=min_vg_byte_width,
+            max_vg_byte_width=max_vg_byte_width,
         )
 
         buffers = self.build_buffers(context, index_data, vertex_buffer, excluded_buffers, buffers_format)
@@ -303,10 +307,16 @@ class DataModel:
             mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
             cache_index_data: bool = False,
             min_ib_byte_width: int = 2,
+            min_vg_byte_width: int = 1,
+            max_vg_byte_width: int = 0,
         ):
 
         if self.data_extractor is None:
             self.data_extractor = BlenderDataExtractor()
+
+        # Extend Blendindices byte width.
+        self.force_compatible_buffers_format(buffers_format, Semantic.Blendindices, len(obj.vertex_groups), min_vg_byte_width, max_vg_byte_width)
+
         export_layout, fetch_loop_data = self.make_export_layout(buffers_format, excluded_buffers)
 
         index_data, vertex_buffer = self.get_mesh_data(

@@ -88,6 +88,8 @@ class DataModelEFMI(DataModel):
         mesh_scale: float = 1.0,
         mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
         min_ib_byte_width: int = 2,
+        min_vg_byte_width: int = 1,
+        max_vg_byte_width: int = 0,
     ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
@@ -113,6 +115,8 @@ class DataModelEFMI(DataModel):
             mesh_rotation=mesh_rotation,
             cache_index_data=False,
             min_ib_byte_width=min_ib_byte_width,
+            min_vg_byte_width=min_vg_byte_width,
+            max_vg_byte_width=max_vg_byte_width,
         )
 
         # Remove TBN, we don't want to export it as buffer
