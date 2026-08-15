@@ -522,6 +522,8 @@ class MigotoObjectBuilder:
         try:
             vg_map = self.build_merged_skeleton_vg_map(migoto_object)
             for component_id, component in enumerate(migoto_object.metadata.components):
+                if component.cpu_posed:
+                    continue
                 component.vg_map = vg_map[component_id]
         except Exception as e:
             print(f"[{migoto_object.id}]: Failed to build VG map: {e} (this object won't be able to use Merged Skeleton)")
