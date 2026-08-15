@@ -78,16 +78,17 @@ class DataModelEFMI(DataModel):
                 self.data_importer.import_attribute(mesh, BufferSemantic(AbstractSemantic(Semantic.Attribute), DXGIFormat.R32_FLOAT).get_name(), data)
 
     def get_data(
-            self, 
-            context: bpy.types.Context, 
-            collection: bpy.types.Collection, 
-            obj: bpy.types.Object, 
-            excluded_buffers: list[str],
-            buffers_format: dict[str, BufferLayout] | None = None,
-            mirror_mesh: bool = False,
-            mesh_scale: float = 1.0,
-            mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-        ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
+        self, 
+        context: bpy.types.Context, 
+        collection: bpy.types.Collection, 
+        obj: bpy.types.Object, 
+        excluded_buffers: list[str],
+        buffers_format: dict[str, BufferLayout] | None = None,
+        mirror_mesh: bool = False,
+        mesh_scale: float = 1.0,
+        mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        min_ib_byte_width: int = 2,
+    ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
             buffers_format = self.buffers_format
@@ -103,6 +104,7 @@ class DataModelEFMI(DataModel):
         index_data, vertex_buffer = self.export_data(
             context=context,
             collection=collection,
+            obj=obj,
             mesh=obj.evaluated_get(context.evaluated_depsgraph_get()).to_mesh(),
             excluded_buffers=excluded_buffers,
             buffers_format=buffers_format,
@@ -110,6 +112,7 @@ class DataModelEFMI(DataModel):
             mesh_scale=mesh_scale,
             mesh_rotation=mesh_rotation,
             cache_index_data=False,
+            min_ib_byte_width=min_ib_byte_width,
         )
 
         # Remove TBN, we don't want to export it as buffer

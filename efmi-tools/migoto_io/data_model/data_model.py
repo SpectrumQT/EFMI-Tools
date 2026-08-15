@@ -126,6 +126,7 @@ class DataModel:
         mirror_mesh: bool = False,
         mesh_scale: float = 1.0,
         mesh_rotation: tuple[float] = (0.0, 0.0, 0.0),
+        min_ib_byte_width: int = 2,
     ) -> tuple[dict[str, NumpyBuffer], numpy.ndarray]:
 
         if buffers_format is None:
@@ -134,12 +135,14 @@ class DataModel:
         index_data, vertex_buffer = self.export_data(
             context=context,
             collection=collection,
+            obj=obj,
             mesh=obj.evaluated_get(context.evaluated_depsgraph_get()).to_mesh(),
             excluded_buffers=excluded_buffers,
             buffers_format=buffers_format,
             mirror_mesh=mirror_mesh,
             mesh_scale=mesh_scale,
             mesh_rotation=mesh_rotation,
+            min_ib_byte_width=min_ib_byte_width,
         )
 
         buffers = self.build_buffers(context, index_data, vertex_buffer, excluded_buffers, buffers_format)
@@ -155,7 +158,6 @@ class DataModel:
         vertex_buffer: NumpyBuffer,
         excluded_buffers: list[str],
         buffers_format: dict[str, BufferLayout],
-        extend_ib_width: bool = True,
     ) -> dict[str, NumpyBuffer]:
         
         start_time = time.time()
@@ -174,16 +176,6 @@ class DataModel:
 
                 if semantic.abstract.enum == Semantic.Index:
                     data = index_data
-                    if extend_ib_width:
-                        buffer_semantic = buffer_layout.get_element(Semantic.Index)
-                        if buffer_semantic.format.numpy_base_type == numpy.uint16:
-                            vertex_count = len(vertex_buffer.data)
-                            if vertex_count > 65535:
-                                if buffer_layout.stride != buffer_layout.calculate_stride():
-                                    raise ValueError(f'Cannot auto-extend Semantic.Index width of {buffer_name} buffer: layout stride {buffer_layout.stride} differs from expected {buffer_layout.calculate_stride()}!')
-                                buffer_semantic.format = DXGIFormat.R32_UINT
-                                buffer_semantic.stride = 12
-                                buffer_layout.fill_stride()
                 else:
                     data = vertex_buffer.get_field(semantic.get_name())
 
@@ -200,7 +192,7 @@ class DataModel:
                             format_converters.append(lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=semantic.format.numpy_base_type))
                         else:
                             semantic_converters.append(lambda data: self.converter_normalize_weights(data, sanitize=False, dtype=numpy.float32))
-                    
+
                     buffer.import_semantic_data(data, semantic, semantic_converters, format_converters)
 
                 except Exception as e:
@@ -214,23 +206,108 @@ class DataModel:
         print(f'Buffers build time: {time.time() - start_time :.3f}s ({len(result)} buffers)')
 
         return result
+    
+    @staticmethod
+    def force_compatible_buffers_format(buffers_format: dict[str, BufferLayout], semantic: Semantic, value: int, min_byte_width: int = 1, max_byte_width: int = 0):
+        """
+        Ensures that all buffer semantics matching the specified semantic use an
+        integer DXGI format capable of representing the given value.
+
+        If a matching semantic uses an integer format whose component width is too
+        small (e.g. R8_UINT for a value requiring 16 bits), the format is replaced
+        with its compatible wider variant (e.g. R16_UINT) and the semantic/layout
+        strides are updated accordingly.
+
+        The resulting component width is never smaller than `min_byte_width`.
+
+        Floating-point formats are ignored, since larger values affect precision
+        rather than requiring a wider storage type.
+        """
+        if min_byte_width not in (1, 2, 4):
+            raise ValueError(f"Unsupported minimum byte width {min_byte_width} (expected 1, 2 or 4).")
+
+        for buffer_name, buffer_layout in buffers_format.items():
+            for buffer_semantic in buffer_layout.semantics:
+                # Skip semantics other than the requested one.
+                if buffer_semantic.abstract.enum != semantic:
+                    continue
+
+                # Determine the minimum per-component byte width required to represent the value.
+                if numpy.issubdtype(buffer_semantic.format.numpy_base_type, numpy.unsignedinteger):
+                    if value <= 0xFF:
+                        required_byte_width = 1
+                    elif value <= 0xFFFF:
+                        required_byte_width = 2
+                    elif value <= 0xFFFFFFFF:
+                        required_byte_width = 4
+                    else:
+                        raise ValueError(f"Value {value} exceeds UINT32 range")
+                elif numpy.issubdtype(buffer_semantic.format.numpy_base_type, numpy.signedinteger):
+                    # Signed formats are selected based on the largest representable magnitude.
+                    abs_value = abs(value)
+                    if abs_value <= 0x80:
+                        required_byte_width = 1
+                    elif abs_value <= 0x8000:
+                        required_byte_width = 2
+                    elif abs_value <= 0x80000000:
+                        required_byte_width = 4
+                    else:
+                        raise ValueError(f"Value {value} exceeds SINT32 range")
+                else:
+                    # Floating-point formats lose precision rather than magnitude, so they do not require widening to represent larger values.
+                    continue
+
+                # Respect requested minimal byte width.
+                required_byte_width = max(min_byte_width, required_byte_width)
+
+                # Optionally cap max byte width.
+                if max_byte_width > 0:
+                    required_byte_width = min(required_byte_width, max_byte_width)
+                    # Current format is already the same as required.
+                    if buffer_semantic.format.value_byte_width == required_byte_width:
+                        continue
+                else:
+                    # Current format is already wide enough.
+                    if buffer_semantic.format.value_byte_width >= required_byte_width:
+                        continue
+
+                # Ensure the layout is tightly packed before changing semantic widths.
+                # The total layout stride must equal the sum of the semantic strides.
+                if buffer_layout.stride != buffer_layout.calculate_stride():
+                    raise ValueError(f'[{buffer_name}]: Failed to extend {buffer_semantic.get_name()} byte width to {required_byte_width}: layout stride {buffer_layout.stride} differs from expected {buffer_layout.calculate_stride()}!')
+                
+                # Replace the format with an equivalent one using a wider component type (e.g. R8G8_UINT -> R16G16_UINT).
+                new_format = buffer_semantic.format.get_compatible_format(required_byte_width)
+                print(f"[{buffer_name}]: Adjusted {buffer_semantic.get_name()} byte width to {required_byte_width} ({buffer_semantic.format.name} -> {new_format.name})")
+                
+                # Scale the semantic stride by the change in component width.
+                # A semantic may contain multiple values (e.g. stride=8 with R8_UINT represents eight 8-bit values), 
+                # so we preserve the number of components rather than simply assigning the new format stride.
+                buffer_semantic.stride = buffer_semantic.stride // buffer_semantic.format.value_byte_width * required_byte_width
+                buffer_semantic.format = new_format
+               
+                # Recalculate the total layout stride after the semantic was widened.
+                buffer_layout.fill_stride()
 
     def export_data(
             self, 
             context: bpy.types.Context, 
             collection: bpy.types.Collection, 
+            obj: bpy.types.Object,
             mesh: bpy.types.Mesh, 
             excluded_buffers: list[str], 
             buffers_format: dict[str, BufferLayout],
             mirror_mesh: bool = False,
             mesh_scale: float = 1.0,
             mesh_rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-            cache_index_data: bool = False
+            cache_index_data: bool = False,
+            min_ib_byte_width: int = 2,
         ):
 
         if self.data_extractor is None:
             self.data_extractor = BlenderDataExtractor()
         export_layout, fetch_loop_data = self.make_export_layout(buffers_format, excluded_buffers)
+
         index_data, vertex_buffer = self.get_mesh_data(
             context=context,
             collection=collection,
@@ -242,6 +319,10 @@ class DataModel:
             mesh_rotation=mesh_rotation,
             cache_index_data=cache_index_data,
         )
+
+        # Extend IB byte width.
+        self.force_compatible_buffers_format(buffers_format, Semantic.Index, len(vertex_buffer.data), min_ib_byte_width)
+
         return index_data, vertex_buffer
 
     def make_export_layout(
