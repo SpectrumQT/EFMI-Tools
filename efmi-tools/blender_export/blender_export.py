@@ -107,9 +107,11 @@ class ModExporter:
                 Switch toolkit to "Extract LoDs From Dump" mode and feed it with open world dump.
                 Please do note that to dump character LODs correctly you should switch to another character and take a few steps back.
             """)
-        
-        self.cfg.mod_skeleton_type = 'COMPONENT'
-        self.skeleton_type = SkeletonType.Merged if self.cfg.mod_skeleton_type == 'MERGED' else SkeletonType.PerComponent
+
+        if self.cfg.mod_skeleton_type == 'MERGED':
+            self.skeleton_type = SkeletonType.Merged
+        else:
+            self.skeleton_type = SkeletonType.PerComponent
 
         self.merged_object = MergedObject(
             object=None,

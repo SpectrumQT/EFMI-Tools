@@ -112,7 +112,7 @@ class ObjectMerger:
                     index_count=0,
                     vg_count=0,
                     shapekeys=MergedObjectShapeKeys(),
-                    skeleton_type=SkeletonType.PerComponent,
+                    skeleton_type=self.skeleton_type,
                 )
             else:
                 self.finalize_temp_objects_geometry()
