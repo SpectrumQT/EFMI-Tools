@@ -40,6 +40,12 @@ class DXGIType(Enum):
         lambda data: data / 127.0)
 
 
+BIT_WIDTHS = {
+    1: "8",
+    2: "16",
+    4: "32",
+}
+
 class DXGIFormat(Enum):
     def __new__(cls, fmt, dxgi_type):
         
@@ -78,7 +84,7 @@ class DXGIFormat(Enum):
         else:
             obj.decoder = obj.list_decoder
 
-        for value_bit_width, value_byte_width in {'32': 4, '16': 2, '8': 1}.items():
+        for value_byte_width, value_bit_width in BIT_WIDTHS.items():
             if value_bit_width in obj.dxgi_type.name:
                 obj.num_values = obj.format.count(value_bit_width)
                 obj.byte_width = obj.num_values * value_byte_width
@@ -108,7 +114,29 @@ class DXGIFormat(Enum):
             return self.numpy_base_type
         else:
             return (self.numpy_base_type, num_values)
-            
+
+    def get_compatible_format(self, byte_width: int) -> "DXGIFormat":
+        """
+        Returns the equivalent DXGIFormat using the requested per-component byte width.
+
+        Example:
+            DXGIFormat.R8G8B8A8_UINT.get_compatible_format(2) -> DXGIFormat.R16G16B16A16_UINT
+        """
+        try:
+            target_bits = BIT_WIDTHS[byte_width]
+        except KeyError:
+            raise ValueError(f"Unsupported byte width {byte_width}") from None
+
+        if target_bits == self.value_bit_width:
+            return self
+
+        name = self.name.replace(self.value_bit_width, target_bits)
+
+        try:
+            return type(self)[name]
+        except KeyError:
+            raise ValueError(f"No compatible format for {self.name} with value byte width {byte_width}") from None
+
     # Float 32
     R32G32B32A32_FLOAT = 'R32G32B32A32_FLOAT', DXGIType.FLOAT32
     R32G32B32_FLOAT = 'R32G32B32_FLOAT', DXGIType.FLOAT32
