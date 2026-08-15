@@ -74,8 +74,11 @@ class ObjectExtractor:
 
         raw_objects = RawObjectExtractor(
             draw_call_filter=draw_call_filter,
-            identifier=RawObjectIdentifier(),
+            identifier=RawObjectIdentifier(
+                verbose_logging=self.verbose_logging
+            ),
             raw_object_filter=raw_object_filter,
+            verbose_logging=self.verbose_logging
         ).extract(model)
 
         print(f'Done extracting raw objects from frame model in {time.time() - t:.2f}s.')

@@ -80,9 +80,9 @@ class DrawCallFilter:
 
 @dataclass
 class RawObjectIdentifier:
+    verbose_logging: bool
 
-    @staticmethod
-    def get_object_id(shader_call: ShaderCall) -> tuple[str | None, bool | None]:
+    def get_object_id(self, shader_call: ShaderCall) -> tuple[str | None, bool | None]:
 
         dynamic_cb = None
 
@@ -116,7 +116,13 @@ class RawObjectIdentifier:
 
         gpu_posed = numpy.bitwise_and(numpy.int32(-17), data[offset + 4, 3].view(numpy.int32)) != 0
 
-        return object_id, gpu_posed
+        if self.verbose_logging:
+            ib_hash = next(iter(shader_call.resources.index_buffer.values())).hash if shader_call.resources.index_buffer else None
+            flags = data[offset + 4][3].view(numpy.uint32)
+            bones_data = data[offset + 5][0 : 2].view(numpy.uint32)
+            print(f"[{object_id}][{ib_hash}]: gpu_posed={gpu_posed} flags={flags} bone_offsets={bones_data} rotation={fragment[0:3].tolist()} position={fragment[3].tolist()} metadata={data[offset + 4][0 : 3].tolist()}")
+
+        return object_id, gpu_posed 
 
 
 @dataclass
@@ -163,6 +169,7 @@ class RawObjectExtractor:
     draw_call_filter: DrawCallFilter
     identifier: RawObjectIdentifier
     raw_object_filter: RawObjectFilter
+    verbose_logging: bool
 
     def register_shader_call(self, extracted_object: RawObject, shader_call: ShaderCall, gpu_posed: bool):
         ib: IndexBuffer = shader_call.resources.get_by_slot(ResourceSlot(ShaderType.Any, SlotType.IndexBuffer, 0))
