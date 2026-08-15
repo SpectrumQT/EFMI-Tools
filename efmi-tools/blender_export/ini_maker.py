@@ -98,14 +98,7 @@ class IniMaker:
     @staticmethod
     def get_default_template(context, cfg, remove_code_comments = False):
 
-        default_templates_path = Path(os.path.realpath(__file__)).parent.parent / 'templates'
-
-        if cfg.mod_skeleton_type == 'MERGED':
-            default_template_path = default_templates_path / 'merged.ini.j2'
-        elif cfg.mod_skeleton_type == 'COMPONENT':
-            default_template_path = default_templates_path / 'per_component.ini.j2'
-        else:
-            raise ValueError(f'Unknown skeleton type {cfg.mod_skeleton_type}!')
+        default_template_path = Path(os.path.realpath(__file__)).parent.parent / 'templates' / 'mod.ini.j2'
 
         result = ''
 
