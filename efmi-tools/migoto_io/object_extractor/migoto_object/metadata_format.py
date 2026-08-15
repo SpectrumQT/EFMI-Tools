@@ -148,7 +148,7 @@ class ExtractedObject:
             self.weigthing_type = WeightingType(self.weigthing_type)
 
         if self.format_version is None:
-            self.format_version = 3
+            self.format_version = 4
 
     def as_json(self):
         return json.dumps(asdict(self), indent=4, cls=EnumEncoder)
