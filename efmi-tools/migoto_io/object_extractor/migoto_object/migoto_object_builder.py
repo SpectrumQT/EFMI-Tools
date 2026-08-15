@@ -386,6 +386,10 @@ class MigotoObjectBuilder:
         unique_bones = {}
         
         for component_id, component in enumerate(migoto_object.components):
+            # Exclude CPU posed components from VG map
+            if component.mesh.cpu_posed:
+                print(f"[{migoto_object.id}]: Skipped remapping duplicate VGs for Component_{component_id} (component is posed by CPU)")
+                continue
 
             skeleton_buffer, _ = self.get_skeleton_data(component.raw_data)
 
