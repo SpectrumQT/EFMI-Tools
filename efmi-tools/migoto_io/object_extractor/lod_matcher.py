@@ -359,22 +359,102 @@ class LODMatcher:
             mesh_name += f" (simplified mesh and skeleton)"
         return mesh_name
 
-    def get_best_matching_components(self, similarity_graph: SimilarityGraph) -> dict[MigotoComponent, MigotoComponent]:
+    def get_best_matching_components(
+        self,
+        similarity_graph: SimilarityGraph,
+    ) -> dict[MigotoComponent, MigotoComponent]:
+        
+        # Make the complete, similarity-sorted candidate list for each LoD component.
+        candidates = {
+            lod: list(similarities.items())
+            for lod, similarities in similarity_graph.data.items()
+            if similarities
+        }
+        # The candidate index tells us which match is currently used.
+        indices = {lod: 0 for lod in candidates}
+
+        while True:
+            # Build the current one-to-one candidate assignments.
+            matches = {
+                lod_component: candidates[lod_component][index]
+                for lod_component, index in indices.items()
+            }
+
+            # Group LoD components by the full component they currently want.
+            # This lets us detect cases where multiple LoDs picked the same full component.
+            by_full = defaultdict(list)
+            for lod, (full, similarity) in matches.items():
+                by_full[full].append((lod, similarity))
+
+            # Only keep actual conflicts. The list is sorted, so the LoD with
+            # the highest similarity gets to keep the contested full component.
+            conflicts = {
+                full: sorted(items, key=itemgetter(1), reverse=True)
+                for full, items in by_full.items()
+                if len(items) > 1
+            }
+
+            # No conflicts means every LoD component has a unique full component.
+            if not conflicts:
+                break
+
+            # Full components that aren't involved in a conflict are already occupied
+            # Therefore, they cannot be used as alternatives.
+            occupied = set(by_full) - set(conflicts)
+            changed = False
+
+            for full, items in conflicts.items():
+                # Reserve the contested full component for the best match.
+                # Everyone else has to find their next-best candidate.
+                occupied.add(full)
+
+                for lod, _ in items[1:]:
+                    index = indices[lod] + 1
+
+                    # Walk down this LoD component's ranked candidates until we find one that isn't already occupied.
+                    while index < len(candidates[lod]):
+                        next_full, _ = candidates[lod][index]
+
+                        if next_full not in occupied:
+                            indices[lod] = index
+                            changed = True
+                            break
+
+                        index += 1
+                    else:
+                        # There are no unused candidates left for this LoD. It will simply remain unmatched.
+                        del indices[lod]
+                        changed = True
+
+                # Normally conflicts should always make progress.
+                # This guard prevents infinite loop if the matching logic is changed later.
+                if not changed:
+                    break
+
         result = {}
-        for lod_component, similarities in similarity_graph.data.items():
-            full_component, similarity = next(iter(similarities.items()))
+
+        for lod, index in indices.items():
+            full, similarity = candidates[lod][index]
 
             if similarity < self.object_similarity_threshold:
                 if self.skip_components_below_similarity_threshold:
-                    print(f"Skipped match by geometry below {self.object_similarity_threshold:.2f}% threshold (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")
-                    lod_component.metadata.mesh_name = f"Skipped Component ib={lod_component.metadata.ib_hash} (mesh similarity {similarity:.2f}% is below configured {self.object_similarity_threshold:.2f}% threshold)"
+                    print(
+                        f"Skipped match by geometry below {self.object_similarity_threshold:.2f}% threshold "
+                        f"(mesh similarity: {similarity:.2f}%): {full.__repr__()} == {lod.__repr__()}"
+                    )
+                    lod.metadata.mesh_name = (
+                        f"Skipped Component ib={lod.metadata.ib_hash} (mesh similarity {similarity:.2f}% "
+                        f"is below configured {self.object_similarity_threshold:.2f}% threshold)"
+                    )
                     continue
-                raise ComponentLowSimilarityError(f"Best matching LoD for {full_component.metadata.mesh_name} has {similarity:.2f}% similarity!")
-            
-            lod_component.metadata.mesh_name = self.make_matched_mesh_name(full_component, lod_component, similarity)
-            
-            result[lod_component] = full_component
 
-            print(f"Match by geometry (mesh similarity: {similarity:.2f}%): {full_component.__repr__()} == {lod_component.__repr__()} ")
+                raise ComponentLowSimilarityError(
+                    f"Best matching LoD for {full.metadata.mesh_name} has {similarity:.2f}% similarity!"
+                )
+
+            lod.metadata.mesh_name = self.make_matched_mesh_name(full, lod, similarity)
+            result[lod] = full
+
+            print(f"Match by geometry (mesh similarity: {similarity:.2f}%): {full.__repr__()} == {lod.__repr__()}")
 
         return result
