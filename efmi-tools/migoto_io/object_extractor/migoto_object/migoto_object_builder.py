@@ -477,8 +477,14 @@ class MigotoObjectBuilder:
             migoto_object.components = filtered_components
     
     def sort_components(self, migoto_object: MigotoObject) -> None:
+        
+        def get_priority(migoto_component: MigotoComponent) -> float:
+            max_vertex_height = float(migoto_component.mesh.vertex_buffer.get_field(Semantic.Position)[:, 2].max())
+            complex_material_offset = -0.01 if migoto_component.raw_data.vertex_offset else 0
+            return max_vertex_height + complex_material_offset
+
         migoto_object.components.sort(
-            key=lambda component: float(component.mesh.vertex_buffer.get_field(Semantic.Position)[:, 2].max()),
+            key=get_priority,
             reverse=True,
         )
     
