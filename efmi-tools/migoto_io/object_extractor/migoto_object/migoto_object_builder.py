@@ -369,12 +369,16 @@ class MigotoObjectBuilder:
 
         if skeleton_offsets[0]:
             data_offset_0 = skeleton_offsets[0] + 3
-            skeleton_data_0 = data[data_offset_0: data_offset_0 + 256 * 3].reshape(-1, 12)
+            skeleton_raw_0 = data[data_offset_0: data_offset_0 + 256 * 3]
+            usable_size = (len(skeleton_raw_0) // 3) * 3
+            skeleton_data_0 = skeleton_raw_0[:usable_size].reshape(-1, 12)
             # numpy.round(skeleton_data_0, 2)
         
         if skeleton_offsets[1]:
             data_offset_1 = skeleton_offsets[1] + 3
-            skeleton_data_1 = data[data_offset_1: data_offset_1 + 256 * 3].reshape(-1, 12)
+            skeleton_raw_1 = data[data_offset_1: data_offset_1 + 256 * 3]
+            usable_size = (len(skeleton_raw_1) // 3) * 3
+            skeleton_data_1 = skeleton_raw_1[:usable_size].reshape(-1, 12)
             # numpy.round(skeleton_data_1, 2)
 
         return skeleton_data_0, skeleton_data_1
