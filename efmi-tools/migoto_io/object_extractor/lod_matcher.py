@@ -88,20 +88,32 @@ class LODMatcher:
         full_object: MigotoObject,
         lod_candidate_objects: list[MigotoObject],
     ) -> tuple[MigotoObject, dict[MigotoComponent, tuple[MigotoComponent, dict[int, int] | None]]]:
+
+        print(f"Searching for matching LoD object among {len(lod_candidate_objects)} candidates...")
+        
         t = time.time()
 
         lod_object_candidates = self.prefilter_lod_object_candidates(full_object, lod_candidate_objects)
 
         lod_object, hash_matched_components = self.find_lod_object_by_hash(full_object, lod_object_candidates)
 
-        if lod_object is None:
+        if lod_object is not None:
+            print(f"Found matching LoD object by shared component hashes: {lod_object.id}")
+        else:
             lod_object, object_similarity, similarity_graph = self.find_lod_object_by_similarity(full_object, lod_object_candidates)
             if object_similarity < self.object_similarity_threshold:
                 raise ObjectLowSimilarityError(f"Best matching LoD for object {full_object.id} has {object_similarity:.2f}% similarity!")
-        else:
-            similarity_graph = self.match_components_by_similarity(full_object, lod_object, hash_matched_components)
+            print(f"Found matching LoD object by geometrical similarity: {lod_object.id} ({object_similarity:.2f}%)")
 
         # similarity_graph.verify_endmin_similarity_graph()
+
+        print(
+            f"Matching {len(lod_object.components)} LoD object components "
+            f"agaisnt {len(full_object.components)} full object components..."
+        )
+        
+        if lod_object is not None:
+            similarity_graph = self.match_components_by_similarity(full_object, lod_object, hash_matched_components)
 
         geo_matched_components = self.get_best_matching_components(similarity_graph)
 
