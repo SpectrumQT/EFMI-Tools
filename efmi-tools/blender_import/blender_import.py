@@ -66,14 +66,15 @@ def import_object(
 
         vg_remap = None
         if cfg.import_skeleton_type == 'MERGED' and not component.metadata.cpu_posed:
-            if not component.metadata.vg_map:
+            if component.metadata.vg_map:
+                vg_remap = numpy.array(list(component.metadata.vg_map.values()))
+            else:
                 raise ConfigError('object_source_folder', f"""
                     Specified sources folder contains object with invalid data!
                     {component.metadata.mesh_name} is missing `vg_map` required for import in Merged Skeleton mode.
                     Most likely this object is currently incompatible with Merged Skeleton.
                     Please use Per-Component Skeleton instead.
                 """)
-            vg_remap = numpy.array(list(component.metadata.vg_map.values()))
 
         model.set_data(
             obj=obj,
