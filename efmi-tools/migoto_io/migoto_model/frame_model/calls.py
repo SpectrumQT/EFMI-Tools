@@ -1,6 +1,7 @@
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Type
+from ..helpers import raise_with_args
 
 if TYPE_CHECKING:
     from .frame_model import DumpModel
@@ -59,7 +60,10 @@ class ShaderCall:
         self.resources=ResourceStorage()
         self.model_resources=ResourceStorage()
         for command in self.commands:
-            command.execute(dump_model=dump_model, shader_call=self)
+            try:
+                command.execute(dump_model=dump_model, shader_call=self)
+            except Exception as e:
+                raise_with_args(f'Failed to execute command: `[{command.raw_command.line_id}][{self.id:06d}]: {command.raw_command.line}`: {str(e)}!', e)
         # Snapshot resource slots state
         for slot_index in dump_model.current_resources._slot_type_index.values():
             for slot, resource in slot_index.items():

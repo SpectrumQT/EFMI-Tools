@@ -4,6 +4,7 @@ import inspect
 from dataclasses import dataclass, fields
 from typing import ClassVar, Any, Union
 from typing import get_origin, get_args
+from textwrap import dedent
 
 
 class AutoArgsMixin:
@@ -115,8 +116,9 @@ class AutoArgsMixin:
 def raise_with_args(msg, e):
     frame = inspect.currentframe().f_back
     arg_info = inspect.getargvalues(frame)
-    args = {k: arg_info.locals[k] for k in arg_info.args}
+    args = {k: arg_info.locals[k] for k in arg_info.args if k != 'dump_model'}
     args_str = ", ".join(f"{k}={v!r}" for k, v in args.items())
     # import traceback
     # traceback.print_exc()
-    raise ValueError(f"{msg}: {args_str}") from e
+    print(f"Locals: {args_str}")
+    raise ValueError(dedent(msg)) from e
