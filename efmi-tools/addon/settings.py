@@ -522,6 +522,9 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         name="Skeleton Scale",
         description="Scales model in-game (default is 1.0). Not supported for Per-Component Skeleton",
         default=1.0,
+        min=0.01,
+        max=100.0,
+        precision=2,
     ) # type: ignore
 
     partial_export: BoolProperty(
