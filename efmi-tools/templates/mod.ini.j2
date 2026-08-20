@@ -108,8 +108,8 @@ global $lod_level = 0
 global persist {{ formatter.format_ini_swapvar(var.name) }} = {{ var.default_state or 0 }}
 {%- endfor %}
 ; Per-object state vars (dynamically controlled by CommandListProcessToggles)
-{%- for component in extracted_object.components %}
-{%- for obj in merged_object.components[loop.index0].objects %}
+{%- for component_id, component_metadata in enumerate(extracted_object.components) %}
+{%- for obj in merged_object.components[component_id].objects %}
 global {{ formatter.format_ini_drawvar(obj.name) }} = 1
 {%- endfor %}
 {%- endfor %}
@@ -324,8 +324,7 @@ run = CommandList\EFMIv1\Component_DrawInstances
 run = CommandList\EFMIv1\Component_DrawInstances_NoDecomposition
 {%- endif %}
 
-
-{%- macro draw_override(component_id, component, hash, index_count, lod_level, is_lod) %}
+{%- macro draw_override(component_id, component_metadata, hash, index_count, lod_level, is_lod) %}
 {{note("Override draw calls for current LoD level of Component %d" | format(component_id))}}
 [TextureOverride_EntryPoint_Component{{ component_id }}{% if is_lod %}_LOD{{ lod_level }}{% endif %}]
 hash = {{ hash }}
@@ -334,14 +333,14 @@ match_index_count = {{ index_count }}
 $object_detected = 1
 if $mod_enabled && DRAW_TYPE == 4
     $\EFMIv1\component_id = {{ component_id }}
-    $\EFMIv1\gpu_posed = {{ (not component.cpu_posed) | int }}
+    $\EFMIv1\gpu_posed = {{ (not component_metadata.cpu_posed) | int }}
 
     {%- if is_lod %}
     {{ note("Signal our mod that object LoD is found on screen and we can start overriding it") }}
     $lod_level = {{ lod_level }}
     {%- else %}
     {{ note("Signal our mod that object LoD is NOT found on screen (only components with LoDs should do it)") }}
-    {%- if component.lods | length > 0 and component.lods[0].ib_hash != component.ib_hash %}
+    {%- if component_metadata.lods | length > 0 and component_metadata.lods[0].ib_hash != component_metadata.ib_hash %}
     $lod_level = 0
     {%- else %}
     ; No LoD(s) with different IB hash found for this component, so it cannot be used for lod level detection
@@ -367,8 +366,8 @@ endif
 ; - DRAW CALLS OVERRIDES: LOD_0 (FULL DETAIL)
 ; ------------------------------------------------------------------------------
 
-{%- for component_id, component in enumerate(extracted_object.components) %}
-{{ draw_override(component_id, component, component.ib_hash,  component.index_count, 0, false) }}
+{%- for component_id, component_metadata in enumerate(extracted_object.components) %}
+{{ draw_override(component_id, component_metadata, component_metadata.ib_hash, component_metadata.index_count, 0, false) }}
 {%- endfor %}
 
 
@@ -380,12 +379,12 @@ endif
 ; - DRAW CALLS OVERRIDES: LOD_{{ lod_level }}
 ; ------------------------------------------------------------------------------
 
-{%- for component_id, component in enumerate(extracted_object.components) %}
-{%- if lod_level - 1 < component.lods | length %}
-{%- set lod = component.lods[lod_level - 1] %}
+{%- for component_id, component_metadata in enumerate(extracted_object.components) %}
+{%- if lod_level - 1 < component_metadata.lods | length %}
+{%- set lod = component_metadata.lods[lod_level - 1] %}
 
-{%- if lod.ib_hash != component.ib_hash %}
-{{ draw_override(component_id, component, lod.ib_hash, lod.index_count, lod_level, true) }}
+{%- if lod.ib_hash != component_metadata.ib_hash %}
+{{ draw_override(component_id, component_metadata, lod.ib_hash, lod.index_count, lod_level, true) }}
 {%- endif %}
 
 {%- endif %}
@@ -470,14 +469,14 @@ run = CommandList\EFMIv1\InitializeMergedSkeleton
 
 local $lod_level_count = $\EFMIv1\cfg_ms_max_lod_level_count
 local $component_id
-{%- for component_id, component in enumerate(extracted_object.components) %}
+{%- for component_id, component_metadata in enumerate(extracted_object.components) %}
 {%- if merged_object.components[component_id].objects | length > 0 %}
-{%- if not component.cpu_posed %}
+{%- if not component_metadata.cpu_posed %}
 $component_id = {{ component_id }}
-$Pool_MergedSkeleton_Component_VertexGroupOffsets[$component_id] = {{ component.vg_offset }}
-$Pool_MergedSkeleton_Component_VertexGroupCounts[$component_id] = {{ component.vg_count }}
+$Pool_MergedSkeleton_Component_VertexGroupOffsets[$component_id] = {{ component_metadata.vg_offset }}
+$Pool_MergedSkeleton_Component_VertexGroupCounts[$component_id] = {{ component_metadata.vg_count }}
 Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+0] = null
-{%- for lod_id, lod in enumerate(component.lods) %}
+{%- for lod_id, lod in enumerate(component_metadata.lods) %}
 {%- if "VB2" in lod.vb_formats or lod.vg_map %}
 {{note("Use VB2 with LoD mesh layout and/or remapped weights (if LoD mesh uses simplified skeleton)")}}
 Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+{{ lod_id + 1 }}] = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}_BlendRemap
@@ -523,10 +522,10 @@ global $source_position_uid = 0
 run = CommandListInitializeShapeKeys
 
 [CommandList_GetShapeKeyBatchParams]
-{%- for component in merged_object.components %}
-{%- if component.shapekeys.vertex_count > 0 %}
-if $component_id == {{ component.id }}
-    {%- for batch in component.shapekeys.batches %}
+{%- for component_data in merged_object.components %}
+{%- if component_data.shapekeys.vertex_count > 0 %}
+if $component_id == {{ component_data.id }}
+    {%- for batch in component_data.shapekeys.batches %}
 	if $component_shapekey_batch_id == {{ loop.index0 }}
 		$component_shapekey_batch_vertex_count = {{ batch.vertex_count }}
 	endif
@@ -536,23 +535,23 @@ endif
 {%- endfor %}
 
 [CommandListInitializeShapeKeys]
-{%- for component in merged_object.components %}
-{%- if component.shapekeys.vertex_count > 0 %}
+{%- for component_data in merged_object.components %}
+{%- if component_data.shapekeys.vertex_count > 0 %}
 
-$component_id = {{ component.id }}
+$component_id = {{ component_data.id }}
 
-Pool_ShapeKeyBatchConfigs[$component_id] = ref Resource_Component{{ component.id }}_ShapeKeyBatchConfigs
-Pool_ShapeKeyVertexIds[$component_id] = ref Resource_Component{{ component.id }}_ShapeKeyVertexIds
-Pool_ShapeKeyVertexOffsets[$component_id] = ref Resource_Component{{ component.id }}_ShapeKeyVertexOffsets
+Pool_ShapeKeyBatchConfigs[$component_id] = ref Resource_Component{{ component_data.id }}_ShapeKeyBatchConfigs
+Pool_ShapeKeyVertexIds[$component_id] = ref Resource_Component{{ component_data.id }}_ShapeKeyVertexIds
+Pool_ShapeKeyVertexOffsets[$component_id] = ref Resource_Component{{ component_data.id }}_ShapeKeyVertexOffsets
 
 $shapekeyed_position_uid = $component_id * $position_instance_count
-Pool_VertexPositions[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0
-Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0
-{%- if component.shapekeys.lod_position_count > 0 %}
-{%- for lod_id, lod in enumerate(extracted_object.components[component.id].lods) %}
+Pool_VertexPositions[$shapekeyed_position_uid] = copy Resource_Component{{ component_data.id }}_VB0
+Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid] = copy Resource_Component{{ component_data.id }}_VB0
+{%- if component_data.shapekeys.lod_position_count > 0 %}
+{%- for lod_id, lod in enumerate(extracted_object.components[component_data.id].lods) %}
 $shapekeyed_position_uid = $shapekeyed_position_uid + 1
-Pool_VertexPositions[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0_LOD{{ lod_id + 1 }}
-Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid] = copy Resource_Component{{ component.id }}_VB0_LOD{{ lod_id + 1 }}
+Pool_VertexPositions[$shapekeyed_position_uid] = copy Resource_Component{{ component_data.id }}_VB0_LOD{{ lod_id + 1 }}
+Pool_ShapeKeyedPositionsRW[$shapekeyed_position_uid] = copy Resource_Component{{ component_data.id }}_VB0_LOD{{ lod_id + 1 }}
 
 {%- endfor %}
 {%- endif %}
@@ -690,32 +689,32 @@ else
 	endif
 endif
 
-{%- for component in merged_object.components %}
-{%- if component.shapekeys.vertex_count > 0 %}
+{%- for component_data in merged_object.components %}
+{%- if component_data.shapekeys.vertex_count > 0 %}
 
-[CommandList_UpdateShapeKeys_Component{{ component.id }}]
+[CommandList_UpdateShapeKeys_Component{{ component_data.id }}]
 {{note("Pass pre-defined params of this component to global scope.")}}
-$component_id = {{ component.id }}
-$component_shapekey_batch_count = {{ component.shapekeys.batches | length }}
-$component_lod_position_count = {{ component.shapekeys.lod_position_count }}
+$component_id = {{ component_data.id }}
+$component_shapekey_batch_count = {{ component_data.shapekeys.batches | length }}
+$component_lod_position_count = {{ component_data.shapekeys.lod_position_count }}
 {{note("Here we branch the template itself (since this CommandList is tailored for this component).")}}
-{%- if component.shapekeys.lod_position_count == 0 %}
+{%- if component_data.shapekeys.lod_position_count == 0 %}
 {{note("This component uses the same position buffer layout for all LoD levels.")}}
 {{note("So we simply call CommandList_UpdateShapeKeys without any extra per-lod-level state tracking.")}}
 run = CommandList_UpdateShapeKeys
 {%- else %}
 {{note("This component uses different position layouts per LoD.")}}
 {{note("Declare local variables to store per-lod-level position buffers update states.")}}
-local $updated_lod_levels_bitmask_{{ component.id }}
-local $first_updated_position_uid_{{ component.id }}
+local $updated_lod_levels_bitmask_{{ component_data.id }}
+local $first_updated_position_uid_{{ component_data.id }}
 {{note("Pass local vars to global scope for CommandList_UpdateShapeKeys to consume.")}}
-$updated_lod_levels_bitmask = $updated_lod_levels_bitmask_{{ component.id }}
-$first_updated_position_uid = $first_updated_position_uid_{{ component.id }}
+$updated_lod_levels_bitmask = $updated_lod_levels_bitmask_{{ component_data.id }}
+$first_updated_position_uid = $first_updated_position_uid_{{ component_data.id }}
 {{note("Call CommandList_UpdateShapeKeys with passed per-lod-level state for this component.")}}
 run = CommandList_UpdateShapeKeys
 {{note("Write back CommandList_UpdateShapeKeys results to the local scope, so global ones could be re-used for component.")}}
-$first_updated_position_uid_{{ component.id }} = $first_updated_position_uid
-$updated_lod_levels_bitmask_{{ component.id }} = $updated_lod_levels_bitmask
+$first_updated_position_uid_{{ component_data.id }} = $first_updated_position_uid
+$updated_lod_levels_bitmask_{{ component_data.id }} = $updated_lod_levels_bitmask
 {%- endif %}
 {%- endif %}
 {%- endfor %}
