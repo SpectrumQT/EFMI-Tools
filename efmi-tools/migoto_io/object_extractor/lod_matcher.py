@@ -1,5 +1,6 @@
 import time
 import re
+import numpy
 
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -22,6 +23,267 @@ class ComponentLowSimilarityError(LODMatcherError):
     pass
 
 
+class HungarianSolver:
+    """Solve a dense linear assignment problem using the Hungarian algorithm.
+
+    The solver minimizes the total cost of a rectangular cost matrix.
+
+    Every row is assigned to a distinct column. If the input has more rows
+    than columns, the matrix is transposed internally, so the returned
+    assignment always contains ``min(rows, columns)`` pairs.
+
+    Non-finite costs (NaN and +/-inf) represent forbidden assignments.
+    A ValueError is raised when a complete assignment of the smaller dimension is not possible.
+
+    Complexity:
+        Time:  O(n^2 * m), where n <= m.
+               O(n^3) for square matrices.
+        Space: O(n + m) auxiliary space, excluding the cost matrix.
+    """
+
+    def __init__(self, cost: numpy.ndarray) -> None:
+        cost = numpy.asarray(cost, dtype=numpy.float64)
+
+        if cost.ndim != 2:
+            raise ValueError("cost must be a 2D matrix")
+
+        self._transposed = cost.shape[0] > cost.shape[1]
+        self._cost = cost.T.copy() if self._transposed else cost.copy()
+
+    @classmethod
+    def maximize(cls, weights: numpy.ndarray) -> "HungarianSolver":
+        """Create a solver for a maximum-weight assignment.
+
+        Args:
+            weights:
+                A 2D array where ``weights[i, j]`` is the score for assigning row ``i`` to column ``j``.
+                Non-finite values (NaN and +/-inf) represent forbidden assignments.
+
+        Returns:
+            A ``HungarianSolver`` configured to maximize the total weight.
+
+        Raises:
+            ValueError:
+                If ``weights`` is not two-dimensional.
+
+        Notes:
+            The Hungarian algorithm is implemented as a minimization algorithm.
+            Maximization is therefore converted to minimization using:
+
+                cost = max(weight) - weight
+
+            where ``max(weight)`` is taken over finite entries only.
+
+            This transformation preserves the optimal assignment because
+            every feasible edge is shifted by the same constant. 
+            Forbidden edges remain infinite and are never considered by the algorithm.
+
+            The returned solver is executed by calling ``solve()``:
+
+                HungarianSolver.maximize(weights).solve()
+        """
+        weights = numpy.asarray(weights, dtype=numpy.float64)
+
+        if weights.ndim != 2:
+            raise ValueError("weights must be a 2D matrix")
+
+        if weights.size == 0:
+            return cls(weights)
+
+        finite = numpy.isfinite(weights)
+        max_weight = weights[finite].max()
+
+        cost = numpy.full_like(weights, numpy.inf)
+        cost[finite] = max_weight - weights[finite]
+
+        return cls(cost)
+
+    def solve(self) -> list[tuple[int, int]]:
+        """Return a minimum-cost assignment.
+
+        Returns:
+            A list of ``(row, column)`` pairs using the indices of the original input matrix.
+
+        Raises:
+            ValueError:
+                If no complete assignment exists.
+
+        Notes:
+            For an ``r x c`` matrix, the returned assignment contains
+            ``min(r, c)`` pairs. If ``r > c``, exactly ``c`` rows are assigned.
+        """
+        if self._cost.size == 0:
+            return []
+
+        n_rows, n_columns = self._cost.shape
+
+        # The implementation assumes n_rows <= n_columns. This invariant is
+        # established by transposing the matrix in __init__ when necessary.
+        assert n_rows <= n_columns
+
+        row_potential = numpy.zeros(n_rows + 1)
+        column_potential = numpy.zeros(n_columns + 1)
+
+        # column_to_row[j] is the row currently matched to column j.
+        # Index 0 is a sentinel used by the augmenting-path algorithm.
+        column_to_row = numpy.zeros(n_columns + 1, dtype=numpy.int32)
+
+        # predecessor[j] stores the previous column on the augmenting path ending at column j.
+        predecessor = numpy.zeros(n_columns + 1, dtype=numpy.int32)
+
+        for row in range(1, n_rows + 1):
+            self._augment(
+                row=row,
+                row_potential=row_potential,
+                column_potential=column_potential,
+                column_to_row=column_to_row,
+                predecessor=predecessor,
+            )
+
+        return self._restore_assignment(column_to_row)
+
+    def _augment(
+        self,
+        *,
+        row: int,
+        row_potential: numpy.ndarray,
+        column_potential: numpy.ndarray,
+        column_to_row: numpy.ndarray,
+        predecessor: numpy.ndarray,
+    ) -> None:
+        """Augment the current matching by one row.
+
+        This is the shortest augmenting-path formulation of the Hungarian algorithm.
+        The dual potentials maintain non-negative reduced costs.
+        Each iteration expands the alternating tree until it reaches an unmatched column.
+        """
+        n_columns = self._cost.shape[1]
+
+        column_to_row[0] = row
+
+        # min_reduced_cost[j] is the smallest reduced cost currently known
+        # for reaching column j from the alternating tree.
+        min_reduced_cost = numpy.full(n_columns + 1, numpy.inf)
+
+        # Columns already included in the current alternating tree.
+        used = numpy.zeros(n_columns + 1, dtype=bool)
+
+        current_column = 0
+
+        while True:
+            used[current_column] = True
+            current_row = column_to_row[current_column]
+
+            delta = numpy.inf
+            next_column = 0
+
+            for column in range(1, n_columns + 1):
+                if used[column]:
+                    continue
+
+                reduced_cost = self._reduced_cost(
+                    row=current_row,
+                    column=column,
+                    row_potential=row_potential,
+                    column_potential=column_potential,
+                )
+
+                if reduced_cost < min_reduced_cost[column]:
+                    min_reduced_cost[column] = reduced_cost
+                    predecessor[column] = current_column
+
+                if min_reduced_cost[column] < delta:
+                    delta = min_reduced_cost[column]
+                    next_column = column
+
+            # No finite reduced-cost edge remains. Therefore the current
+            # partial matching cannot be augmented to a complete matching.
+            if not numpy.isfinite(delta):
+                raise ValueError(
+                    "no complete feasible assignment exists"
+                )
+
+            # Update the dual variables for the alternating tree. This keeps
+            # reduced costs non-negative and makes the selected next edge tight, allowing the tree to grow.
+            for column in range(n_columns + 1):
+                if used[column]:
+                    row_potential[column_to_row[column]] += delta
+                    column_potential[column] -= delta
+                else:
+                    min_reduced_cost[column] -= delta
+
+            current_column = next_column
+
+            # An unmatched column terminates the augmenting path.
+            if column_to_row[current_column] == 0:
+                break
+
+        # Flip the matching along the discovered alternating path.
+        while True:
+            previous_column = predecessor[current_column]
+
+            column_to_row[current_column] = (
+                column_to_row[previous_column]
+            )
+
+            current_column = previous_column
+
+            if current_column == 0:
+                break
+
+    def _reduced_cost(
+        self,
+        *,
+        row: int,
+        column: int,
+        row_potential: numpy.ndarray,
+        column_potential: numpy.ndarray,
+    ) -> float:
+        """Return the reduced cost of an edge.
+
+        Non-finite input costs are treated as forbidden edges and therefore have infinite reduced cost.
+        """
+        cost = self._cost[row - 1, column - 1]
+
+        if not numpy.isfinite(cost):
+            return numpy.inf
+
+        return (
+            cost
+            - row_potential[row]
+            - column_potential[column]
+        )
+
+    def _restore_assignment(
+        self,
+        column_to_row: numpy.ndarray,
+    ) -> list[tuple[int, int]]:
+        """Convert the internal matching back to original coordinates."""
+        assignments: list[tuple[int, int]] = []
+
+        for internal_column in range(1, len(column_to_row)):
+            internal_row = column_to_row[internal_column]
+
+            if internal_row == 0:
+                continue
+
+            row = internal_row - 1
+            column = internal_column - 1
+
+            if self._transposed:
+                # The internal matrix is cost.T, so swap the coordinates
+                # when converting back to the caller's coordinate system.
+                assignments.append((column, row))
+            else:
+                assignments.append((row, column))
+
+        # The algorithm naturally produces assignments in column order.
+        # Return them in row order for a deterministic public API.
+        assignments.sort()
+
+        return assignments
+
+
 @dataclass
 class SimilarityGraph:
 
@@ -36,6 +298,53 @@ class SimilarityGraph:
             total_similarity += similarity
         weighted_similarity = total_similarity / len(self.data)
         return weighted_similarity
+
+    def find_optimal_matching(
+        self,
+        min_similarity: float = 0.0,
+    ) -> "SimilarityGraph":
+        """
+        Find the globally optimal one-to-one component matching by maximizing total similarity.
+
+        Components with no feasible match, or whose similarity is below `min_similarity`, remain unmatched.
+        """
+        rows = list(self.data)
+        columns = list({
+            candidate
+            for similarities in self.data.values()
+            for candidate in similarities
+        })
+
+        if not rows or not columns:
+            return SimilarityGraph({})
+
+        column_indices = {component: i for i, component in enumerate(columns)}
+
+        # Real edges below the threshold are forbidden.
+        weights = numpy.full(
+            (len(rows), len(columns) + len(rows)),
+            min_similarity,
+            dtype=numpy.float64,
+        )
+
+        weights[:, :len(columns)] = -numpy.inf
+
+        for row_index, component in enumerate(rows):
+            for candidate, similarity in self.data[component].items():
+                if similarity >= min_similarity:
+                    weights[row_index, column_indices[candidate]] = similarity
+
+        assignments = HungarianSolver.maximize(weights).solve()
+
+        matched_data = {
+            rows[row_index]: {
+                columns[column_index]: float(weights[row_index, column_index])
+            }
+            for row_index, column_index in assignments
+            if column_index < len(columns)
+        }
+
+        return SimilarityGraph(matched_data)
 
     def verify_endmin_similarity_graph(self):
         endmin_lod1_to_full_map = {
@@ -364,77 +673,22 @@ class LODMatcher:
         similarity_graph: SimilarityGraph,
     ) -> dict[MigotoComponent, MigotoComponent]:
         
-        # Make the complete, similarity-sorted candidate list for each LoD component.
-        candidates = {
-            lod: list(similarities.items())
-            for lod, similarities in similarity_graph.data.items()
-            if similarities
-        }
-        # The candidate index tells us which match is currently used.
-        indices = {lod: 0 for lod in candidates}
-
-        while True:
-            # Build the current one-to-one candidate assignments.
-            matches = {
-                lod_component: candidates[lod_component][index]
-                for lod_component, index in indices.items()
-            }
-
-            # Group LoD components by the full component they currently want.
-            # This lets us detect cases where multiple LoDs picked the same full component.
-            by_full = defaultdict(list)
-            for lod, (full, similarity) in matches.items():
-                by_full[full].append((lod, similarity))
-
-            # Only keep actual conflicts. The list is sorted, so the LoD with
-            # the highest similarity gets to keep the contested full component.
-            conflicts = {
-                full: sorted(items, key=itemgetter(1), reverse=True)
-                for full, items in by_full.items()
-                if len(items) > 1
-            }
-
-            # No conflicts means every LoD component has a unique full component.
-            if not conflicts:
-                break
-
-            # Full components that aren't involved in a conflict are already occupied
-            # Therefore, they cannot be used as alternatives.
-            occupied = set(by_full) - set(conflicts)
-            changed = False
-
-            for full, items in conflicts.items():
-                # Reserve the contested full component for the best match.
-                # Everyone else has to find their next-best candidate.
-                occupied.add(full)
-
-                for lod, _ in items[1:]:
-                    index = indices[lod] + 1
-
-                    # Walk down this LoD component's ranked candidates until we find one that isn't already occupied.
-                    while index < len(candidates[lod]):
-                        next_full, _ = candidates[lod][index]
-
-                        if next_full not in occupied:
-                            indices[lod] = index
-                            changed = True
-                            break
-
-                        index += 1
-                    else:
-                        # There are no unused candidates left for this LoD. It will simply remain unmatched.
-                        del indices[lod]
-                        changed = True
-
-                # Normally conflicts should always make progress.
-                # This guard prevents infinite loop if the matching logic is changed later.
-                if not changed:
-                    break
+        # Find the globally optimal one-to-one assignment.
+        matched_graph = similarity_graph.find_optimal_matching(min_similarity=0.0
+            # min_similarity=self.object_similarity_threshold
+            # if self.skip_components_below_similarity_threshold
+            # else 0.0
+        )
 
         result = {}
 
-        for lod, index in indices.items():
-            full, similarity = candidates[lod][index]
+        for lod, similarities in matched_graph.data.items():
+
+            if not similarities:
+                continue
+
+            # maximum_weight_matching guarantees at most one match per LoD.
+            full, similarity = next(iter(similarities.items()))
 
             if similarity < self.object_similarity_threshold:
                 if self.skip_components_below_similarity_threshold:
