@@ -264,19 +264,32 @@ class ModExporter:
 
                 self.buffers[f'Component{component_id}_VB2_LOD{lod_level}'] = vb2_remapped
 
-            else:
-                # Add blend remap table itself to export buffers.
-                # This table is used by bone data importer CS to drive merged skeleton by LoDs.
-                 
-                layout = BufferLayout([
-                    BufferSemantic(AbstractSemantic(Semantic.RawData, 31), DXGIFormat.R16_UINT),
-                ])
+    def build_lod_vg_remaps(self, component_id: int):
+        # Add LoD blend remap tables to export buffers.
+        # They are used by bone data importer CS to drive merged skeleton by LoDs.
 
-                vb2_remap = NumpyBuffer(layout=layout, size=len(remap))
+        component = self.extracted_object.components[component_id]
+        
+        lod_meshes = component.lods
+        if not lod_meshes:
+            return
 
-                vb2_remap.set_field(AbstractSemantic(Semantic.RawData, 31), remap)
+        for lod_id, lod_mesh in enumerate(lod_meshes):
+            if not lod_mesh.vg_map or not component.vg_count:
+                continue
+
+            lod_level = lod_id + 1
+
+            remap = numpy.array([lod_mesh.vg_map.get(str(vg_id), vg_id) for vg_id in range(component.vg_count)])
                 
-                self.buffers[f'Component{component_id}_VB2_LOD{lod_level}_BlendRemap'] = vb2_remap
+            layout = BufferLayout([
+                BufferSemantic(AbstractSemantic(Semantic.RawData, 31), DXGIFormat.R16_UINT),
+            ])
+
+            vb2_remap = NumpyBuffer(layout=layout, size=len(remap))
+            vb2_remap.set_field(AbstractSemantic(Semantic.RawData, 31), remap)
+            
+            self.buffers[f'Component{component_id}_VB2_LOD{lod_level}_BlendRemap'] = vb2_remap
 
     def build_shapekey_buffers(self, data_model: DataModelEFMI, vertex_ids: numpy.ndarray, merged_object: MergedObject, component_id: int):
         assert len(merged_object.components) == 1
@@ -361,6 +374,9 @@ class ModExporter:
             self.build_shapekey_buffers(data_model, vertex_ids, merged_object, component_id)
 
             merged_object.vertex_count = vertex_count
+
+        if self.skeleton_type == SkeletonType.Merged:
+            self.build_lod_vg_remaps(component_id)
 
         print(f'Total mesh data collection time: {time.time() - start_time :.3f}s')
     
