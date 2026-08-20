@@ -1,6 +1,6 @@
 ; EFMI ALPHA-9 INI
 
-{%- macro note(text) %}{% if comment_code %}; {{ text }}{% else %};DEL{% endif %}{% endmacro %}
+{%- macro note(text, indent=0) %}{{ " " * indent }}{% if comment_code %}; {{ text }}{% else %};DEL{% endif %}{% endmacro %}
 
 {%- if cfg.use_ini_toggles %}
 
@@ -170,15 +170,55 @@ endif
 ; - CUSTOM MESH DRAW CALLS
 ; ------------------------------------------------------------------------------
 
-{%- for component_id, component in enumerate(extracted_object.components) if merged_object.components[component_id].objects | length > 0 %}
+{%- for component_id, component_metadata in enumerate(extracted_object.components) %}
+
+{%- set component_data = merged_object.components[component_id] %}
+{%- set has_objects = component_data.objects | length > 0 %}
+{%- set has_shapekeys = component_data.shapekeys.vertex_count > 0 %}
+{%- set indent = 4 if cfg.use_ini_toggles else 0 %}
+{%- set draw_spacing = " " * indent %}
 
 {{note("Do custom draw calls for Component %d" | format(loop.index0))}}
 [CommandList_Draw_Component{{ component_id }}]
-{{note("Trigger TextureOverride sections for PS slots from 0 to 20 with matching `hash` values")}}
+
+{%- if has_objects or component_metadata.cpu_posed %}
+{{note("Trigger TextureOverride sections for PS slots from 0 to 22 with matching `hash` values")}}
 {{note("If hash of resource in slot matches TextureOverride hash, TextureOverride puts defined custom texture Resource in `this` slot")}}
 run = CommandList\EFMIv1\OverrideTextures
-{%- if not component.cpu_posed %}
-{%- if merged_object.components[component_id].shapekeys.vertex_count > 0 %}
+{%- else %}
+; No matching objects found for this component in Blender.
+; Uncomment to trigger textures replacement (original textures are not modified when commented):
+;run = CommandList\EFMIv1\OverrideTextures
+{%- endif %}
+
+{%- if not has_objects or component_metadata.cpu_posed %}
+
+{%- if cfg.use_spatial_identification %}
+{{note("Spatial identification allows to use different resources for each instance")}}
+{{note("Draw single instance with original mesh (called multiple times in per-instance loop)")}}
+{%- if component_metadata.cpu_posed and has_objects %}
+; Component is posed on CPU, vertex buffers modding is not supported.
+; Draw this component using original in-game meshes:
+drawindexed = INDEX_COUNT, FIRST_INDEX, 0
+{%- else %}
+; Uncomment to draw original in-game mesh for this component (original component is hidden when commented):
+;drawindexed = INDEX_COUNT, FIRST_INDEX, 0
+{%- endif %}
+{%- else %}
+{{note("Draw all instances with original mesh at once")}}
+{%- if component_metadata.cpu_posed and has_objects %}
+; Component is posed on CPU, vertex buffers modding is not supported.
+; Draw this component using original in-game meshes:
+drawindexedinstanced = INDEX_COUNT, INSTANCE_COUNT, FIRST_INDEX, 0, FIRST_INSTANCE
+{%- else %}
+; Uncomment to draw original in-game mesh for this component (original component is hidden when commented):
+;drawindexedinstanced = INDEX_COUNT, INSTANCE_COUNT, FIRST_INDEX, 0, FIRST_INSTANCE
+{%- endif %}
+{%- endif %}
+
+{%- else %}
+
+{%- if has_shapekeys %}
 {{note("Process pending component shapekeyes update (apply morphs to vertex positions data)")}}
 run = CommandList_UpdateShapeKeys_Component{{ component_id }}
 {%- endif %}
@@ -186,7 +226,7 @@ run = CommandList_UpdateShapeKeys_Component{{ component_id }}
 ib = ref Resource_Component{{ component_id }}_IB
 {{note("Conditional vertex buffers swap (with multiple LoD levels support)")}}
 if $lod_level == 0
-    {%- if merged_object.components[component_id].shapekeys.vertex_count == 0 %}
+    {%- if not has_shapekeys %}
     {{note("Contains vertex positions and TBN data")}}
     vb0 = ref Resource_Component{{ component_id }}_VB0
     {{note("Some shaders (e.g. wetness) are being supplied with differently mapped VB0 copy")}}
@@ -204,9 +244,9 @@ if $lod_level == 0
     {{note("Use VB2 with weights for full model")}}
     vb2 = ref Resource_Component{{ component_id }}_VB2
     {%- endif %}
-{%- for lod_id, lod in enumerate(component.lods) %}
+{%- for lod_id, lod in enumerate(component_metadata.lods) %}
 elif $lod_level == {{ lod_id + 1 }}
-    {%- if merged_object.components[component_id].shapekeys.vertex_count == 0 %}
+    {%- if not has_shapekeys %}
     {%- if "VB0" in lod.vb_formats %}
     {{note("Use VB0 with LoD mesh layout")}}
     vb0 = ref Resource_Component{{ component_id }}_VB0_LOD{{ lod_id + 1 }}
@@ -237,36 +277,26 @@ elif $lod_level == {{ lod_id + 1 }}
     {%- endif %}
 {%- endfor %}
 endif
-{%- else %}
-; Component is posed on CPU, vertex buffers modding not supported
-{%- endif %}
-{%- for obj in merged_object.components[component_id].objects %}
-; Draw {{ obj.name }}
+
+{%- for obj in component_data.objects %}
 {%- if cfg.use_ini_toggles %}
 if {{ formatter.format_ini_drawvar(obj.name) }}
-    {%- if not component.cpu_posed %}
-    {%- if cfg.use_spatial_identification %}
-    drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
-    {%- else %}
-    drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
     {%- endif %}
-    {%- else %}
-    drawindexed = INDEX_COUNT, 0, 0
-    {%- endif %}
-endif
-{%- else %}
-{%- if not component.cpu_posed %}
+{{ draw_spacing }}; Draw object "{{ obj.name }}":
 {%- if cfg.use_spatial_identification %}
-drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
+{{note("Spatial identification allows to use different resources for each instance", indent)}}
+{{note("Draw single instance with custom mesh (called in per-instance loop)", indent)}}
+{{ draw_spacing }}drawindexed = {{ obj.index_count }}, {{ obj.index_offset }}, 0
 {%- else %}
-drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
+{{note("Draw all instances with custom mesh at once", indent)}}
+{{ draw_spacing }}drawindexedinstanced = {{ obj.index_count }}, INSTANCE_COUNT, {{ obj.index_offset }}, 0, FIRST_INSTANCE
 {%- endif %}
-{%- else %}
-{{note("Use original draw type and arguments (since mesh geometry is not modified)")}}
-drawindexed = INDEX_COUNT, 0, 0
-{%- endif %}
+{%- if cfg.use_ini_toggles %}
+endif
 {%- endif %}
 {%- endfor %}
+
+{%- endif %}
 
 {%- endfor %}
 
