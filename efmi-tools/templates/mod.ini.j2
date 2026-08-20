@@ -1,4 +1,4 @@
-; EFMI ALPHA-9 INI
+; EFMI ALPHA-10 INI
 
 {%- macro note(text, indent=0) %}{{ " " * indent }}{% if comment_code %}; {{ text }}{% else %};DEL{% endif %}{% endmacro %}
 
@@ -281,7 +281,7 @@ endif
 {%- for obj in component_data.objects %}
 {%- if cfg.use_ini_toggles %}
 if {{ formatter.format_ini_drawvar(obj.name) }}
-    {%- endif %}
+{%- endif %}
 {{ draw_spacing }}; Draw object "{{ obj.name }}":
 {%- if cfg.use_spatial_identification %}
 {{note("Spatial identification allows to use different resources for each instance", indent)}}
@@ -377,7 +377,7 @@ if $mod_enabled && DRAW_TYPE == 4
     ; $lod_level = 0
     {%- endif %}
     {%- endif %}
-
+    
     {%- if merged_object.skeleton_type.value == "Merged" and merged_object.components[component_id].objects | length == 0 %}
     ; No matching objects found for this component in Blender. Run merged skeleton in read-only mode:
     $\EFMIv1\skip_skeleton_override = 1
