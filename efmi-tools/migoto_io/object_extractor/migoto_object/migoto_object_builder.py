@@ -382,70 +382,144 @@ class MigotoObjectBuilder:
             # numpy.round(skeleton_data_1, 2)
 
         return skeleton_data_0, skeleton_data_1
-    
+
     def build_merged_skeleton_vg_map(self, migoto_object: MigotoObject):
         """
-        Concatenates VGs of components and remaps duplicate VGs based on bone values from skeleton buffers
+        Concatenates VGs of components and remaps duplicate VGs based on bone values from skeleton buffers.
+
+        For duplicate bones, prefers a valid bone source whose VG is used by the largest number of vertices.
         """
 
         print(f'[{migoto_object.id}]: Start building Merged Skeleton VG Map...')
 
         vg_offset = 0
         vg_map = {}
-        unique_bones = {}
-        
+
+        # bone_data -> list of candidate VG occurrences
+        bone_candidates = {}
+
+        # -------------------------------------------------------------------------
+        # First pass:
+        # Collect all VG occurrences and determine component VG offsets/counts.
+        # -------------------------------------------------------------------------
+
         for component_id, component in enumerate(migoto_object.components):
-            # Exclude CPU posed components from VG map
+            # Exclude CPU posed components from VG map.
             if component.mesh.cpu_posed:
-                print(f"[{migoto_object.id}]: Skipped remapping duplicate VGs for Component_{component_id} (component is posed by CPU)")
+                print(
+                    f"[{migoto_object.id}]: Skipped remapping duplicate VGs for "
+                    f"Component_{component_id} (component is posed by CPU)"
+                )
                 continue
+
+            vg_ids = component.mesh.get_data(Semantic.Blendindices)
+            vg_weights = component.mesh.get_data(Semantic.Blendweights)
+
+            # Handle implicit weighting (first VG of each vertex has 1.0 weight, other are zero).
+            if vg_weights is None:
+                vg_weights = numpy.zeros_like(vg_ids, dtype=numpy.float32)
+                vg_weights[..., 0] = 1.0
+                
+            # Calculate how many vertices are weighted to each VG.
+            weighted_vertex_counts = numpy.bincount(
+                vg_ids[vg_weights != 0],
+                minlength=vg_ids.max() + 1,
+            )
 
             skeleton_buffer, _ = self.get_skeleton_data(component.raw_data)
 
-            vg_map[component_id] = {}
-            # Fetch joined list of all VG ids of all vertices of the component (4 VG ids per vertex)
-            vertex_groups = component.mesh.vertex_buffer.get_field(Semantic.Blendindices)
-            # For remapping purposes, VG count is the highest used VG id among all vertices of the component
-            # It allows to efficiently construct merged skeleton buffer in-game via vg_offset & vg_count of components
             component.metadata.vg_offset = vg_offset
-            component.metadata.vg_count = int(vertex_groups.max() + 1)
-            # Ensure frame dump data integrity
+            component.metadata.vg_count = int(vg_ids.max() + 1)
+
+            # Ensure frame dump data integrity.
             if len(skeleton_buffer) < component.metadata.vg_count:
-                raise ValueError('skeleton of Component_%d has only %d bones, while there are %d VGs declared' % (
-                    component_id, len(skeleton_buffer), component.metadata.vg_count))
-            
+                raise ValueError(
+                    f"Skeleton of Component_{component_id} has only {len(skeleton_buffer)} bones, "
+                    f"while there are {component.metadata.vg_count} VGs declared"
+                )
+
             is_valid_bone_source = self.merged_skeleton_filter.is_valid_bone_source(component)
-            # Build VG map
+
             for vg_id in range(component.metadata.vg_count):
-                # Fetch data floats of bone which VG is linked to
+                # Fetch deform matrix floats of a bone which drives this VG.
                 bone_data = tuple(skeleton_buffer[vg_id].tolist())
-                # Skip zero-valued bone (garbage data)
+
+                # Skip zero-valued bone (garbage data).
                 if all(v == 0 for v in bone_data):
                     continue
-                # Get desc object of already registered unique bone data
-                unique_bone_data = unique_bones.get(bone_data, None)
-                # Register VG in VG map
-                if unique_bone_data is None or unique_bone_data['component_id'] == component_id:
-                    # Handle new VG or duplicate VG within same component
-                    shifted_vg_id = vg_offset + vg_id  # Remap VG to VG of merged skeleton
-                    vg_map[component_id][vg_id] = shifted_vg_id  # Remap VG to VG of merged skeleton
-                    if is_valid_bone_source:
-                        unique_bones[bone_data] = {  # Register unique bone data
-                            'component_id': component_id,
-                            'local_vg_id': vg_id,
-                            'global_vg_id': shifted_vg_id
-                        }
-                else:
-                    # Handle duplicate VG across different components
-                    vg_map[component_id][vg_id] = unique_bone_data['global_vg_id']  # Remap VG to VG of already registered bone
-                    
-                    print(f"[{migoto_object.id}]: Remapped duplicate VG: Component_{component_id} VG {vg_id} -> Component_{unique_bone_data['component_id']} VG {unique_bone_data['local_vg_id']} (merged skeleton VG {unique_bone_data['global_vg_id']})")
-                    
+
+                bone_candidates.setdefault(bone_data, []).append({
+                    'component_id': component_id,
+                    'local_vg_id': vg_id,
+                    'global_vg_id': vg_offset + vg_id,
+                    'weighted_vertex_count': int(weighted_vertex_counts[vg_id]),
+                    'is_valid_source': is_valid_bone_source,
+                })
+
             vg_offset += component.metadata.vg_count
+
+        # -------------------------------------------------------------------------
+        # Second pass:
+        # Pick the best remap source for every unique bone.
+        # -------------------------------------------------------------------------
+
+        bone_sources = {}
+
+        for bone_data, candidates in bone_candidates.items():
+            valid_candidates = [
+                candidate
+                for candidate in candidates
+                if candidate['is_valid_source']
+            ]
+
+            # If there are valid source candidates, choose the one used by the largest number of vertices.
+            if valid_candidates:
+                source = max(
+                    valid_candidates,
+                    key=lambda candidate: candidate['weighted_vertex_count'],
+                )
+            else:
+                # No valid source exists. Keep the first occurrence as the
+                # canonical mapping, matching the previous general behavior.
+                source = candidates[0]
+
+            bone_sources[bone_data] = source
+
+        # -------------------------------------------------------------------------
+        # Third pass:
+        # Establish the actual VG mapping.
+        # -------------------------------------------------------------------------
+
+        remapped_vgs = {}
+
+        for bone_data, candidates in bone_candidates.items():
+            source = bone_sources[bone_data]
+
+            for candidate in candidates:
+                component_id = candidate['component_id']
+                vg_id = candidate['local_vg_id']
+
+                vg_map.setdefault(component_id, {})[vg_id] = source['global_vg_id']
+
+                if candidate['global_vg_id'] != source['global_vg_id']:
+                    remapped_vgs.setdefault(component_id, {})[vg_id] = source
+
+        vg_map = {
+            component_id: dict(sorted(component_vg_map.items()))
+            for component_id, component_vg_map in sorted(vg_map.items())
+        }
+
+        for component_id, vgs in sorted(remapped_vgs.items()):
+            for vg_id, source in sorted(vgs.items()):
+                print(
+                    f"[{migoto_object.id}]: Remapped duplicate VG: "
+                    f"Component_{component_id} VG {vg_id} -> Component_{source['component_id']} "
+                    f"VG {source['local_vg_id']} (merged skeleton VG {source['global_vg_id']})"
+                )
 
         print(f'[{migoto_object.id}]: Successfully built Merged Skeleton VG Map for {vg_offset} Vertex Groups')
 
-        return dict(sorted(vg_map.items()))
+        return vg_map
 
     def build_migoto_component(self, raw_component: RawComponent) -> MigotoComponent:
 
