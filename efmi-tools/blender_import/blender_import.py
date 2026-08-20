@@ -65,7 +65,7 @@ def import_object(
         obj = bpy.data.objects.new(mesh.name, mesh)
 
         vg_remap = None
-        if cfg.import_skeleton_type == 'MERGED' and not component.metadata.cpu_posed:
+        if cfg.import_skeleton_type == 'MERGED' and cfg.dedupe_bones and not component.metadata.cpu_posed:
             if component.metadata.vg_map:
                 vg_remap = numpy.array(list(component.metadata.vg_map.values()))
             else:

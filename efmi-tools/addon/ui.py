@@ -184,6 +184,7 @@ class EFMI_TOOLS_PT_SIDEBAR(bpy.types.Panel):
 
         if cfg.import_skeleton_type == 'MERGED':
             layout.row().prop(cfg, 'skip_empty_vertex_groups')
+            layout.row().prop(cfg, 'dedupe_bones')
         layout.row().prop(cfg, 'mirror_mesh')
 
         layout.row()

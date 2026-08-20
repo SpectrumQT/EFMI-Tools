@@ -235,6 +235,12 @@ class EFMI_Settings(bpy.types.PropertyGroup):
         default=True,
     ) # type: ignore
 
+    dedupe_bones: BoolProperty(
+        name="Dedupe Vertex Groups",
+        description="Remap duplicate VGs to a shared VG for each unique bone. \n\nWarning! May cause glitches when the source component LOD does not contain equivalent geometry, as automated LOD VG mapping selects the most similar available geometry rather than an exact match.",
+        default=True,
+    ) # type: ignore
+
     mirror_mesh: BoolProperty(
         name="Mirror Mesh",
         description="Automatically mirror mesh to match actual in-game left-right. Transformation applies to the data itself and does not affect Scale X of Transform section in Object Properties",
