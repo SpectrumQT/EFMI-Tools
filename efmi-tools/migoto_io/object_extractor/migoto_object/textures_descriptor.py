@@ -37,14 +37,15 @@ class TextureFilter:
             if file_size < self.min_file_size:
                 return False
 
-        # Exclude non-square textures
+        # Exclude textures that cannot fully fold into the other dimension
+        # Allow 1024x1024 or 4096x2048, skip 1920x1080 or 2048x3072
         if texture.bin_path_deduped.suffix == '.dds':
             width, height = self.get_dds_dimensions(texture.bin_path_deduped)
-            if width != height:
+            if width % height != 0 and height % width != 0:
                 return False
         elif texture.bin_path_deduped.suffix == '.jpg':
             width, height = self.get_jpg_dimensions(texture.bin_path_deduped)
-            if width != height:
+            if width % height != 0 and height % width != 0:
                 return False
 
         return True
