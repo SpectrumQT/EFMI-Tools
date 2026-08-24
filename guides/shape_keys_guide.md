@@ -128,18 +128,10 @@ The following example sets shape key `Custom 0` of `Component 0` to a value of `
 $component_id = 0
 $shapekey_id = 0
 $shapekey_value = 0.5
-local $shapekey_0_0_value
-if $shapekey_0_0_value != $shapekey_value
-    run = CommandListSetShapeKey
-    $shapekey_0_0_value = $shapekey_value
-endif
+run = CommandListSetShapeKey
 ```
 
-> Always use a unique local variable per component/shape key pair to store the previously applied value.
-
 ## On Optimization
-
-The `$shapekey_0_0_value` trick above is used to prevent calling `CommandListSetShapeKey` for the same shape key value on every frame. This command list blindly trusts the caller and schedules the component's mesh for update before the first draw of this component in current frame.
 
 Multiple `CommandListSetShapeKey` calls for the same component within a frame only schedule a single geometry update. The actual mesh deformation is performed lazily before the component is drawn for the first time that frame.
 
@@ -153,20 +145,12 @@ So doing this comes at almost no extra GPU cost:
 $component_id = 0
 $shapekey_id = 0
 $shapekey_value = 0.5
-local $shapekey_0_0_value
-if $shapekey_0_0_value != $shapekey_value
-    run = CommandListSetShapeKey
-    $shapekey_0_0_value = $shapekey_value
-endif
+run = CommandListSetShapeKey
 
 $component_id = 0
 $shapekey_id = 1
 $shapekey_value = 0.85
-local $shapekey_0_1_value
-if $shapekey_0_1_value != $shapekey_value
-    run = CommandListSetShapeKey
-    $shapekey_0_1_value = $shapekey_value
-endif
+run = CommandListSetShapeKey
 ```
 
 ## Real World Example: Triangle-Wave Horniness
@@ -218,7 +202,7 @@ $component_id = 0
 $shapekey_id = 0
 ; Pass $value produced by oscillator above.
 $shapekey_value = $value
-; The `$shapekey_0_0_value` optimization isn't needed here, since `$value` changes every frame anyway.
+; Write new value to GPU buffer.
 run = CommandListSetShapeKey
 ```
 
