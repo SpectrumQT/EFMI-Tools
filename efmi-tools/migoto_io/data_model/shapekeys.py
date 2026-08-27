@@ -134,9 +134,8 @@ class ShapeKeyData:
         # So here we look for the largest absolute delta of each axis and divide quantization target by it.
         # This way, when shader does `weighted_delta * quantization_scale`, result never exceeds quantization_target.
         largest_deltas = [
-            numpy.abs(position_deltas[:, 0]).max(),
-            numpy.abs(position_deltas[:, 1]).max(),
-            numpy.abs(position_deltas[:, 2]).max()
+            float(numpy.abs(position_deltas[:, axis]).max())
+            for axis in range(3)
         ]
         quantization_scales, dequantization_scales = [], []
         for delta in largest_deltas:
