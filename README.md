@@ -17,6 +17,7 @@
 
 ## Known Issues
 
+- Merged Skeleton may glitch for some characters based on imported LODs (EFMI needs better LODs handling architecture).
 - **Snowshine** LOD1 has misplaced body (matching LoD mesh has different pivot point).
 
 ## Features
@@ -26,9 +27,7 @@
 - **Extracted Object Import** —Imports extracted object into Blender as fully editable mesh
 - **EFMI Mod Export** — Builds plug-and-play EFMI-compatible mod out of mesh components
 - **Customizable Export** — Fast template-powered mod export engine
-
-## Planned Features
-- **Bones Merging** — Automatic VG lists merging and deduping 
+- **Merged Skeleton** — Automatic VG lists merging and deduping 
 - **Custom Shapekeys** — Shapekeys export support with INI-based control 
 
 ## How To Use
@@ -37,7 +36,7 @@ All fields and actions of the plugin have basic tooltips. Refer to [Modder Guide
 
 ## Installation
 
-1. Install [Blender 5.0](https://www.blender.org/download/releases/5-0) or [Blender 4.5 LTS](https://www.blender.org/download/releases/4-5) (not tested with other versions)
+1. Install [Blender 5.2 LTS](https://www.blender.org/download/releases/5-2) or [Blender 4.5 LTS](https://www.blender.org/download/releases/4-5) (not tested with other versions)
 2. Download the [latest release](https://github.com/SpectrumQT/EFMI-Tools/releases/latest) of **EFMI-Tools-X.X.X.zip**
 3. Open Blender, go to **[Edit] -> [Preferences] -> [Add-ons]**
 4. Open addon `.zip` selection dialogue via top-right corner button:
