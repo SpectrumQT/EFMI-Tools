@@ -495,19 +495,19 @@ Resource\EFMIv1\OutputMergedSkeleton_Template = ref ResourceMergedSkeletonDataRW
 run = CommandList\EFMIv1\InitializeMergedSkeleton
 
 local $lod_level_count = $\EFMIv1\cfg_ms_max_lod_level_count
-local $component_id
+local $cmp_id
 {%- for component_id, component_metadata in enumerate(extracted_object.components) %}
 {%- if not component_metadata.cpu_posed %}
-$component_id = {{ component_id }}
-$Pool_MergedSkeleton_Component_VertexGroupOffsets[$component_id] = {{ component_metadata.vg_offset }}
-$Pool_MergedSkeleton_Component_VertexGroupCounts[$component_id] = {{ component_metadata.vg_count }}
-Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+0] = null
+$cmp_id = {{ component_id }}
+$Pool_MergedSkeleton_Component_VertexGroupOffsets[$cmp_id] = {{ component_metadata.vg_offset }}
+$Pool_MergedSkeleton_Component_VertexGroupCounts[$cmp_id] = {{ component_metadata.vg_count }}
+Pool_MergedSkeleton_Component_LodRemaps[$cmp_id * $lod_level_count + 0] = null
 {%- for lod_id, lod in enumerate(component_metadata.lods) %}
 {%- if "VB2" in lod.vb_formats or lod.vg_map %}
 {{note("Use VB2 with LoD mesh layout and/or remapped weights (if LoD mesh uses simplified skeleton)")}}
-Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+{{ lod_id + 1 }}] = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}_BlendRemap
+Pool_MergedSkeleton_Component_LodRemaps[$cmp_id * $lod_level_count + {{ lod_id + 1 }}] = ref Resource_Component{{ component_id }}_VB2_LOD{{ lod_id + 1 }}_BlendRemap
 {%- else %}
-Pool_MergedSkeleton_Component_LodRemaps[$component_id*$lod_level_count+{{ lod_id + 1 }}] = null
+Pool_MergedSkeleton_Component_LodRemaps[$cmp_id * $lod_level_count + {{ lod_id + 1 }}] = null
 {%- endif %}
 {%- endfor %}
 {%- endif %}
