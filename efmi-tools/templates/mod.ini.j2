@@ -460,8 +460,8 @@ pool_size = $component_count * $max_instance_count
 pool_size = $component_count * $max_instance_count
 
 [ResourceMergedSkeletonDataRW]
-type = RWBuffer
-format = R32G32B32A32_FLOAT
+type = RWStructuredBuffer
+stride = 16
 array = ($\EFMIv1\cfg_ms_implicit_bones_count + $\EFMIv1\cfg_ms_skeletons_count * $bones_count * $max_instance_count) * $\EFMIv1\cfg_ms_bone_entry_size
 
 
