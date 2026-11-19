@@ -170,6 +170,24 @@ endif
 ; - CUSTOM MESH DRAW CALLS
 ; ------------------------------------------------------------------------------
 
+{%- macro add_dhash_texture_overrides(component_id, enable) %}
+{%- if enable %}
+{{note("Override textures using dhash-based matching")}}
+{%- else %}
+; No matching objects found for this component in Blender.
+; Uncomment to trigger textures replacement (original textures are not modified when commented):
+{%- endif %}
+{%- for texture_id, texture in enumerate(textures) %}
+{%- if component_id in texture.components %}
+{%- if enable %}
+ps-t[FilterTexture{{ texture_id }}] = ref ResourceTexture{{ texture_id }}
+{%- else %}
+;ps-t[FilterTexture{{ texture_id }}] = ref ResourceTexture{{ texture_id }}
+{%- endif %}
+{%- endif %}
+{%- endfor %}
+{%- endmacro %}
+
 {%- for component_id, component_metadata in enumerate(extracted_object.components) %}
 
 {%- set component_data = merged_object.components[component_id] %}
@@ -177,22 +195,12 @@ endif
 {%- set has_shapekeys = component_data.shapekeys.vertex_count > 0 %}
 {%- set indent = 4 if cfg.use_ini_toggles else 0 %}
 {%- set draw_spacing = " " * indent %}
+{%- set override_textures = has_objects or component_metadata.cpu_posed %}
 
-{{note("Do custom draw calls for Component %d" | format(loop.index0))}}
+{{note("Do custom draw calls for Component %d" | format(component_id))}}
 [CommandList_Draw_Component{{ component_id }}]
-
-{%- if has_objects or component_metadata.cpu_posed %}
-{{note("Trigger TextureOverride sections for PS slots from 0 to 22 with matching `hash` values")}}
-{{note("If hash of resource in slot matches TextureOverride hash, TextureOverride puts defined custom texture Resource in `this` slot")}}
-run = CommandList\EFMIv1\OverrideTextures
-{%- else %}
-; No matching objects found for this component in Blender.
-; Uncomment to trigger textures replacement (original textures are not modified when commented):
-;run = CommandList\EFMIv1\OverrideTextures
-{%- endif %}
-
 {%- if not has_objects or component_metadata.cpu_posed %}
-
+{{- add_dhash_texture_overrides(component_id, component_metadata.cpu_posed and has_objects) }}
 {%- if cfg.use_spatial_identification %}
 {{note("Spatial identification allows to use different resources for each instance")}}
 {{note("Draw single instance with original mesh (called multiple times in per-instance loop)")}}
@@ -276,7 +284,7 @@ elif $lod_level == {{ lod_id + 1 }}
     {%- endif %}
 {%- endfor %}
 endif
-
+{{- add_dhash_texture_overrides(component_id, override_textures) }}
 {%- for obj in component_data.objects %}
 {%- if cfg.use_ini_toggles %}
 if {{ formatter.format_ini_drawvar(obj.name) }}
@@ -423,17 +431,13 @@ endif
 ; - TEXTURES
 ; ------------------------------------------------------------------------------
 
-{%- for texture in textures %}
+{%- for texture_id, texture in enumerate(textures) %}
 
-[Resource_Texture{{ loop.index0 }}]
+[ResourceTexture{{ texture_id }}]
 filename = Textures/{{ texture.filename }}
-
-[TextureOverride_Texture{{ loop.index0 }}]
-hash = {{ texture.hash }}
-match_priority = 0
-if $object_detected
-    this = Resource_Texture{{ loop.index0 }}
-endif
+[FilterTexture{{ texture_id }}]
+match_format = {{ texture.format }}
+match_dhash = {{ texture.dhash }}
 {%- endfor %}
 
 
