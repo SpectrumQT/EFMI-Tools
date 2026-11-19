@@ -19,18 +19,15 @@ class ObjectExporter:
             f.write(json.dumps(textures_descriptor.slot_usage, indent=4))
 
         for texture_hash, texture in textures_descriptor.textures.items():
+            if texture.dhash is None:
+                print(f"WARNING! Skipped texture without dhash: {texture.bin_path_deduped.name}")
+                continue
 
-            filename = f"Components-{'-'.join(map(str, sorted(list(set(textures_descriptor.components_usage.get(texture_hash))))))}"
-            filename += f" t={texture_hash}"
-            if texture.data_descriptor.data_format:
-                data_format = str(texture.data_descriptor.data_format)
-                encoding = data_format.split("_")[0]
-                if data_format.endswith("SRGB"):
-                    colorspace = "sRGB"
-                else:
-                    colorspace = "Linear"
-                filename += f" {encoding}-{colorspace}"
-            filename += texture.bin_path_deduped.suffix
+            components = '-'.join(sorted(map(str, sorted(list(set(textures_descriptor.components_usage.get(texture_hash)))))))
+            dxgi_format = texture.data_descriptor.data_format
+            extension = texture.bin_path_deduped.suffix
+
+            filename = f"c={components} f={dxgi_format} t={texture_hash} d={texture.dhash}{extension}"
 
             output_path = folder_path / filename
 
