@@ -14,6 +14,7 @@ from ..migoto_format import MigotoFormat
 class Resource:
     hash: str
     pointer: str
+    dhash: str | None = None
     usage: dict[int, list[ResourceSlot]] | None = None
     # usage: dict[int, list[ResourceSlot]] | None = field(default_factory=lambda: defaultdict(list))
 

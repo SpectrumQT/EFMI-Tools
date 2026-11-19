@@ -16,6 +16,7 @@ class ResourceSlotBinding(CommandBinding):
     slot_id: int = field(metadata={"arg": "prefix"})
     resource: str = field(metadata={"arg": "resource"})
     hash: str = field(metadata={"arg": "hash"})
+    dhash: str = field(metadata={"arg": "dhash"})
 
 
 @dataclass(repr=False)
@@ -117,6 +118,7 @@ class SetShaderResources(CommandCall):
             slot = ResourceSlot(self.shader_type, SlotType.Texture, binding.slot_id)
             resource = Resource(
                 pointer=binding.resource,
+                dhash=binding.dhash if binding.dhash != 'None' else None,
                 hash=binding.hash,
             )
             dump_model.set_resource(slot, resource)
