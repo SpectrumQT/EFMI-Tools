@@ -23,7 +23,7 @@ class ObjectExporter:
                 print(f"WARNING! Skipped texture without dhash: {texture.bin_path_deduped.name}")
                 continue
 
-            components = '-'.join(sorted(map(str, sorted(list(set(textures_descriptor.components_usage.get(texture_hash)))))))
+            components = '-'.join(map(str, sorted(list(set(textures_descriptor.components_usage.get(texture_hash))))))
             dxgi_format = texture.data_descriptor.data_format
             extension = texture.bin_path_deduped.suffix
 
