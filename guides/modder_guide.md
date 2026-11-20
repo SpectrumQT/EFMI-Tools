@@ -173,6 +173,8 @@ That's it! Once you export your mod, all required ini code will be created autom
     * Diffuse textures (colors) must be saved in BC7-sRGB (no mipmaps, no gamma shift) format.
     * NormalMap and other textures must be saved in BC7-Linear (no mipmaps, no gamma shift) format.
 
+In-game textures replacement happens according to `mod.ini` instructions. Default `mod.ini` template utilizes the latest **dHash-based textures overriding** tech, see **[Textures Filtering docs](https://github.com/SpectrumQT/XXMI-Libs-Package/blob/master/docs/ini-language-extensions/filters/texture-filtering.md)** for more details.
+
 ## View Mod In Game
 
 1. Make sure that character you've modded isn't visible on screen (go to character menu of another character).
